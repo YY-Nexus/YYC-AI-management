@@ -148,63 +148,60 @@ YanYu Cloud³ 是一个现代化的企业级智能业务管理系统，集成了
 
 ## 📁 完整文件树
 
-\`\`\`
+## 📁 完整文件树
+
+```text
 yanyu-cloud3/
-├── 📁 app/                           # Next.js App Router
-│   ├── layout.tsx                    # 根布局
-│   ├── page.tsx                      # 首页
-│   └── globals.css                   # 全局样式
+├── app/                           # Next.js App Router
+│   ├── layout.tsx                 # 根布局
+│   ├── page.tsx                   # 首页
+│   └── globals.css                # 全局样式
 │
-├── 📁 backend/                       # 后端服务
-│   ├── 📁 src/
-│   │   ├── 📁 config/                # 配置文件
-│   │   │   ├── database.ts           # 数据库配置
-│   │   │   ├── redis.ts              # Redis 配置
-│   │   │   ├── logger.ts             # 日志配置
-│   │   │   └── metrics.ts            # Prometheus 指标
-│   │   │
-│   │   ├── 📁 types/                 # TypeScript 类型定义
-│   │   │   ├── reconciliation.ts     # 对账类型
-│   │   │   ├── ticket.ts             # 工单类型
-│   │   │   ├── ai-analysis.ts        # AI 分析类型
-│   │   │   └── websocket.ts          # WebSocket 类型
-│   │   │
-│   │   ├── 📁 services/              # 业务逻辑层
-│   │   │   ├── reconciliation.service.ts         # 对账服务
-│   │   │   ├── reconciliation.service.cached.ts  # 对账服务（缓存版）
-│   │   │   ├── csv-import.service.ts             # CSV 导入服务
-│   │   │   ├── ticket.service.ts                 # 工单服务
-│   │   │   ├── cache.service.ts                  # 缓存服务
-│   │   │   ├── redis-pubsub.service.ts           # Redis 发布订阅
-│   │   │   ├── websocket.service.ts              # WebSocket 服务
-│   │   │   ├── notification.service.ts           # 通知服务
-│   │   │   ├── openai.service.ts                 # OpenAI 服务
-│   │   │   ├── prompt-templates.service.ts       # 提示词模板服务
-│   │   │   └── ai-analysis.service.ts            # AI 分析服务
-│   │   │
-│   │   ├── 📁 routes/                # API 路由
-│   │   │   ├── reconciliation.routes.ts          # 对账路由
-│   │   │   ├── reconciliation.routes.cached.ts   # 对账路由（缓存版）
-│   │   │   ├── csv-import.routes.ts              # CSV 导入路由
-│   │   │   ├── tickets.routes.ts                 # 工单路由
-│   │   │   ├── ai-analysis.routes.ts             # AI 分析路由
-│   │   │   ├── websocket.routes.ts               # WebSocket 路由
-│   │   │   └── health.routes.ts                  # 健康检查路由
-│   │   │
-│   │   ├── 📁 middleware/            # 中间件
-│   │   │   ├── auth.middleware.ts                # 认证中间件
-│   │   │   ├── cache.middleware.ts               # 缓存中间件
-│   │   │   ├── validation.middleware.ts          # 验证中间件
-│   │   │   ├── rate-limiter.middleware.ts        # 限流中间件
-│   │   │   ├── circuit-breaker.middleware.ts     # 熔断中间件
-│   │   │   └── error-handler.middleware.ts       # 错误处理中间件
-│   │   │
-│   │   ├── 📁 __tests__/             # 测试文件
-│   │   │   ├── 📁 integration/
+├── backend/                       # 后端服务
+│   ├── src/
+│   │   ├── config/                # 配置文件
+│   │   │   ├── database.ts
+│   │   │   ├── redis.ts
+│   │   │   ├── logger.ts
+│   │   │   └── metrics.ts
+│   │   ├── types/                 # TypeScript 类型定义
+│   │   │   ├── reconciliation.ts
+│   │   │   ├── ticket.ts
+│   │   │   ├── ai-analysis.ts
+│   │   │   └── websocket.ts
+│   │   ├── services/              # 业务逻辑层
+│   │   │   ├── reconciliation.service.ts
+│   │   │   ├── reconciliation.service.cached.ts
+│   │   │   ├── csv-import.service.ts
+│   │   │   ├── ticket.service.ts
+│   │   │   ├── cache.service.ts
+│   │   │   ├── redis-pubsub.service.ts
+│   │   │   ├── websocket.service.ts
+│   │   │   ├── notification.service.ts
+│   │   │   ├── openai.service.ts
+│   │   │   ├── prompt-templates.service.ts
+│   │   │   └── ai-analysis.service.ts
+│   │   ├── routes/                # API 路由
+│   │   │   ├── reconciliation.routes.ts
+│   │   │   ├── reconciliation.routes.cached.ts
+│   │   │   ├── csv-import.routes.ts
+│   │   │   ├── tickets.routes.ts
+│   │   │   ├── ai-analysis.routes.ts
+│   │   │   ├── websocket.routes.ts
+│   │   │   └── health.routes.ts
+│   │   ├── middleware/            # 中间件
+│   │   │   ├── auth.middleware.ts
+│   │   │   ├── cache.middleware.ts
+│   │   │   ├── validation.middleware.ts
+│   │   │   ├── rate-limiter.middleware.ts
+│   │   │   ├── circuit-breaker.middleware.ts
+│   │   │   └── error-handler.middleware.ts
+│   │   ├── __tests__/             # 测试文件
+│   │   │   ├── integration/
 │   │   │   │   ├── reconciliation.integration.test.ts
 │   │   │   │   ├── tickets.integration.test.ts
 │   │   │   │   └── ai-analysis.integration.test.ts
-│   │   │   └── 📁 unit/
+│   │   │   └── unit/
 │   │   │       └── services/
 │   │   │           ├── reconciliation.service.test.ts
 │   │   │           ├── ticket.service.test.ts
@@ -212,26 +209,22 @@ yanyu-cloud3/
 │   │   │           ├── openai.service.test.ts
 │   │   │           ├── ai-analysis.service.test.ts
 │   │   │           └── websocket.service.test.ts
-│   │   │
 │   │   └── server.ts                 # 服务器入口
-│   │
-│   ├── 📁 scripts/                   # 脚本文件
-│   │   ├── redis-flush.js            # Redis 清空脚本
-│   │   └── simulate-ai-analysis.ts   # AI 分析模拟脚本
-│   │
-│   ├── 📁 performance/               # 性能测试
-│   │   ├── k6-load-test.js           # K6 负载测试
-│   │   └── cache-performance-test.js # 缓存性能测试
-│   │
-│   ├── package.json                  # 后端依赖
-│   ├── tsconfig.json                 # TypeScript 配置
-│   ├── .env.example                  # 环境变量示例
-│   ├── REDIS_INTEGRATION.md          # Redis 集成文档
-│   ├── WEBSOCKET_INTEGRATION.md      # WebSocket 集成文档
-│   └── AI_ANALYSIS_INTEGRATION.md    # AI 分析集成文档
+│   ├── scripts/                   # 脚本文件
+│   │   ├── redis-flush.js
+│   │   └── simulate-ai-analysis.ts
+│   ├── performance/               # 性能测试
+│   │   ├── k6-load-test.js
+│   │   └── cache-performance-test.js
+│   ├── package.json
+│   ├── tsconfig.json
+│   ├── .env.example
+│   ├── REDIS_INTEGRATION.md
+│   ├── WEBSOCKET_INTEGRATION.md
+│   └── AI_ANALYSIS_INTEGRATION.md
 │
-├── 📁 components/                    # React 组件
-│   ├── 📁 ui/                        # shadcn/ui 基础组件
+├── components/                    # React 组件
+│   ├── ui/
 │   │   ├── button.tsx
 │   │   ├── card.tsx
 │   │   ├── input.tsx
@@ -252,28 +245,23 @@ yanyu-cloud3/
 │   │   ├── scroll-area.tsx
 │   │   ├── sheet.tsx
 │   │   └── collapsible.tsx
-│   │
-│   ├── 📁 finance/                   # 财务模块组件
+│   ├── finance/
 │   │   ├── financial-reconciliation.tsx
 │   │   ├── financial-reconciliation-enhanced.tsx
 │   │   ├── csv-import.tsx
 │   │   └── ai-analysis-display.tsx
-│   │
-│   ├── 📁 support/                   # 工单模块组件
+│   ├── support/
 │   │   └── ticket-system.tsx
-│   │
-│   ├── 📁 notifications/             # 通知模块组件
+│   ├── notifications/
 │   │   └── websocket-notifications.tsx
-│   │
-│   ├── 📁 data-analysis/             # 数据分析组件
+│   ├── data-analysis/
 │   │   ├── data-overview.tsx
 │   │   ├── user-analysis.tsx
 │   │   ├── business-analysis.tsx
 │   │   ├── real-time-monitoring.tsx
 │   │   ├── report-center.tsx
 │   │   └── data-alert.tsx
-│   │
-│   ├── 📁 ai-engine/                 # AI 引擎组件
+│   ├── ai-engine/
 │   │   ├── ai-assistant.tsx
 │   │   ├── ai-dashboard.tsx
 │   │   ├── intelligent-analysis.tsx
@@ -283,46 +271,40 @@ yanyu-cloud3/
 │   │   ├── storage-management.tsx
 │   │   ├── knowledge-base.tsx
 │   │   └── development-environment.tsx
-│   │
-│   ├── 📁 business/                  # 业务管理组件
+│   ├── business/
 │   │   ├── business-management.tsx
 │   │   ├── finance-management.tsx
 │   │   ├── order-management.tsx
 │   │   ├── erp-system.tsx
 │   │   ├── crm-customer.tsx
 │   │   └── supply-chain.tsx
-│   │
-│   ├── 📁 user-management/           # 用户管理组件
+│   ├── user-management/
 │   │   ├── user-list.tsx
 │   │   ├── user-details.tsx
 │   │   ├── add-user.tsx
 │   │   ├── user-configuration.tsx
 │   │   ├── ban-management.tsx
 │   │   └── role-permissions.tsx
-│   │
-│   ├── 📁 system-settings/           # 系统设置组件
+│   ├── system-settings/
 │   │   ├── general-settings.tsx
 │   │   ├── security-settings.tsx
 │   │   ├── permission-management.tsx
 │   │   ├── privacy-settings.tsx
 │   │   ├── notification-settings.tsx
 │   │   └── appearance-settings.tsx
-│   │
-│   ├── 📁 profile/                   # 个人资料组件
+│   ├── profile/
 │   │   ├── basic-info.tsx
 │   │   ├── edit-profile.tsx
 │   │   ├── avatar-settings.tsx
 │   │   ├── contact-info.tsx
 │   │   ├── address-info.tsx
 │   │   └── account-security.tsx
-│   │
-│   ├── 📁 project-management/        # 项目管理组件
+│   ├── project-management/
 │   │   ├── project-overview.tsx
 │   │   ├── task-management.tsx
 │   │   ├── agile-workflow.tsx
 │   │   └── development-execution.tsx
-│   │
-│   ├── 📁 design-system/             # 设计系统组件
+│   ├── design-system/
 │   │   ├── logo.tsx
 │   │   ├── logo-enhanced.tsx
 │   │   ├── design-tokens.tsx
@@ -340,78 +322,64 @@ yanyu-cloud3/
 │   │   ├── navigation-enhanced.tsx
 │   │   ├── scrollable-navigation.tsx
 │   │   └── responsive-layout.tsx
-│   │
-│   ├── 📁 navigation/                # 导航组件
+│   ├── navigation/
 │   │   ├── optimized-navigation-system.tsx
 │   │   └── enhanced-navigation.tsx
-│   │
-│   ├── 📁 data-center/               # 数据中心组件
+│   ├── data-center/
 │   │   ├── dynamic-data-center.tsx
 │   │   ├── collaboration-engine.tsx
 │   │   └── wechat-integration.tsx
-│   │
-│   ├── 📁 devops/                    # DevOps 组件
+│   ├── devops/
 │   │   └── ci-cd-dashboard.tsx
-│   │
-│   ├── 📁 workflow/                  # 工作流组件
+│   ├── workflow/
 │   │   └── contract-approval.tsx
-│   │
-│   ├── 📁 mobile/                    # 移动端组件
+│   ├── mobile/
 │   │   └── mobile-dashboard.tsx
-│   │
-│   ├── 📁 plugin-system/             # 插件系统组件
+│   ├── plugin-system/
 │   │   ├── plugin-manager.tsx
 │   │   ├── plugin-store.tsx
 │   │   └── plugin-developer.tsx
-│   │
-│   ├── 📁 multi-tenant/              # 多租户组件
+│   ├── multi-tenant/
 │   │   └── tenant-management.tsx
-│   │
-│   ├── 📁 integrations/              # 集成组件
+│   ├── integrations/
 │   │   ├── integration-hub.tsx
 │   │   ├── api-gateway.tsx
 │   │   └── webhook-manager.tsx
-│   │
-│   ├── 📁 planning/                  # 规划组件
+│   ├── planning/
 │   │   └── development-priority-roadmap.tsx
-│   │
-│   ├── 📁 system/                    # 系统组件
+│   ├── system/
 │   │   └── comprehensive-feature-analysis.tsx
-│   │
-│   ├── 📁 dashboard/                 # 仪表板组件
+│   ├── dashboard/
 │   │   └── main-dashboard.tsx
-│   │
-│   ├── 📁 common/                    # 通用组件
+│   ├── common/
 │   │   ├── kpi-card.tsx
 │   │   ├── data-table.tsx
 │   │   └── approval-flow.tsx
-│   │
-│   ├── 📁 atoms/                     # Storybook 原子组件
-│   │   ├── 📁 Button/
+│   ├── atoms/
+│   │   ├── Button/
 │   │   │   ├── Button.tsx
 │   │   │   ├── Button.stories.tsx
 │   │   │   └── Button.mdx
-│   │   ├── 📁 Input/
+│   │   ├── Input/
 │   │   │   ├── Input.tsx
 │   │   │   └── Input.stories.tsx
-│   │   └── 📁 Badge/
+│   │   └── Badge/
 │   │       ├── Badge.tsx
 │   │       └── Badge.stories.tsx
-│   │
-│   └── theme-provider.tsx            # 主题提供者
+│   └── theme-provider.tsx
 │
-├── 📁 hooks/                         # 自定义 Hooks
-│   ├── use-mobile.ts                 # 移动端检测
-│   ├── use-toast.ts                  # Toast 通知
-│   └── use-websocket.ts              # WebSocket Hook
+├── hooks/                         # 自定义 Hooks
+│   ├── use-mobile.ts
+│   ├── use-toast.ts
+│   └── use-websocket.ts
 │
-├── 📁 lib/                           # 工具库
-│   └── utils.ts                      # 通用工具函数
+├── lib/
+│   └── utils.ts
 │
-├── 📁 types/                         # 前端类型定义
-│   └── websocket.ts                  # WebSocket 类型
+├── types/
+│   └── websocket.ts
 │
-├── 📁 docs/                          # 文档
+├── docs/
 │   ├── technical-specifications.tsx
 │   ├── development-roadmap.tsx
 │   ├── current-status-analysis.tsx
@@ -426,36 +394,36 @@ yanyu-cloud3/
 │   ├── MODULE_DEPENDENCIES.md
 │   └── DEPLOYMENT_TROUBLESHOOTING.md
 │
-├── 📁 database/                      # 数据库文件
-│   ├── 📁 migrations/                # 数据库迁移
+├── database/
+│   ├── migrations/
 │   │   └── 001_create_reconciliation_tables.sql
-│   └── 📁 seeds/                     # 数据库种子
+│   └── seeds/
 │       └── 001_sample_data.sql
 │
-├── 📁 scripts/                       # 脚本文件
-│   ├── Dockerfile                    # Docker 镜像
-│   ├── docker-compose.dev.yml        # 开发环境编排
-│   ├── docker-compose.prod.yml       # 生产环境编排
-│   ├── deploy.sh                     # 部署脚本
-│   ├── prometheus.yml                # Prometheus 配置
-│   ├── package.json                  # 脚本依赖
-│   └── test-setup.js                 # 测试配置
+├── scripts/
+│   ├── Dockerfile
+│   ├── docker-compose.dev.yml
+│   ├── docker-compose.prod.yml
+│   ├── deploy.sh
+│   ├── prometheus.yml
+│   ├── package.json
+│   └── test-setup.js
 │
-├── 📁 .github/                       # GitHub 配置
-│   └── 📁 workflows/
-│       ├── ci-cd.yml                 # CI/CD 工作流
-│       └── chromatic.yml             # Chromatic 工作流
+├── .github/
+│   └── workflows/
+│       ├── ci-cd.yml
+│       └── chromatic.yml
 │
-├── 📁 .storybook/                    # Storybook 配置
-│   ├── main.ts                       # Storybook 主配置
-│   └── preview.tsx                   # Storybook 预览配置
+├── .storybook/
+│   ├── main.ts
+│   └── preview.tsx
 │
-├── 📁 design-system/                 # 设计系统
-│   ├── 📁 components/
+├── design-system/
+│   ├── components/
 │   │   └── Button.tsx
-│   ├── 📁 stories/
+│   ├── stories/
 │   │   └── Button.stories.tsx
-│   ├── 📁 .storybook/
+│   ├── .storybook/
 │   │   ├── main.ts
 │   │   └── preview.ts
 │   ├── design-tokens.ts
@@ -464,15 +432,15 @@ yanyu-cloud3/
 │   ├── tsconfig.json
 │   └── package.json
 │
-├── 📁 design-tokens/                 # 设计令牌
+├── design-tokens/
 │   └── tokens.ts
 │
-├── 📁 package-ui/                    # UI 组件包
-│   ├── 📁 src/
-│   │   ├── 📁 components/
-│   │   │   └── 📁 Button/
+├── package-ui/
+│   ├── src/
+│   │   ├── components/
+│   │   │   └── Button/
 │   │   │       └── Button.test.tsx
-│   │   ├── 📁 test/
+│   │   ├── test/
 │   │   │   └── setup.ts
 │   │   └── index.ts
 │   ├── package.json
@@ -480,13 +448,13 @@ yanyu-cloud3/
 │   ├── vitest.config.ts
 │   └── README.md
 │
-├── 📁 styles/                        # 样式文件
-│   ├── globals.css                   # 全局样式
-│   ├── base.css                      # 基础样式
-│   ├── variables.css                 # CSS 变量
-│   └── theme-map.css                 # 主题映射
+├── styles/
+│   ├── globals.css
+│   ├── base.css
+│   ├── variables.css
+│   └── theme-map.css
 │
-├── 📁 public/                        # 静态资源
+├── public/
 │   ├── logo.png
 │   ├── placeholder-logo.png
 │   ├── placeholder-logo.svg
@@ -495,21 +463,21 @@ yanyu-cloud3/
 │   ├── placeholder.svg
 │   └── generic-placeholder-graphic.png
 │
-├── admin-dashboard.tsx               # 管理后台入口
-├── enhanced-admin-dashboard.tsx      # 增强版管理后台
-├── theme-provider.tsx                # 主题提供者
-├── components.json                   # shadcn/ui 配置
-├── tailwind.config.ts                # Tailwind 配置
-├── postcss.config.mjs                # PostCSS 配置
-├── next.config.mjs                   # Next.js 配置
-├── tsconfig.json                     # TypeScript 配置
-├── package.json                      # 前端依赖
-├── .env.example                      # 环境变量示例
-├── .env.local                        # 本地环境变量
-├── .env                              # 环境变量
-├── .gitignore                        # Git 忽略文件
-├── README.md                         # 项目文档
-└── LICENSE                           # 开源许可证
+├── admin-dashboard.tsx
+├── enhanced-admin-dashboard.tsx
+├── theme-provider.tsx
+├── components.json
+├── tailwind.config.ts
+├── postcss.config.mjs
+├── next.config.mjs
+├── tsconfig.json
+├── package.json
+├── .env.example
+├── .env.local
+├── .env
+├── .gitignore
+├── README.md
+└── LICENSE
 
 📊 统计信息：
 ├── 总文件数：200+
@@ -518,7 +486,7 @@ yanyu-cloud3/
 ├── API 接口：50+
 ├── 测试用例：80+
 └── 文档页面：20+
-\`\`\`
+```
 
 ---
 
