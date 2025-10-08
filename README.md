@@ -264,236 +264,237 @@ yanyu-cloud3/
 │   │
 │   ├── 📁 notifications/ # 通知模块组件
 │   │   └── websocket-notifications.tsx
-│ │
-│ ├── 📁 data-analysis/ # 数据分析组件
-│ │ ├── data-overview.tsx
-│ │ ├── user-analysis.tsx
-│ │ ├── business-analysis.tsx
-│ │ ├── real-time-monitoring.tsx
-│ │ ├── report-center.tsx
-│ │ └── data-alert.tsx
-│ │
-│ ├── 📁 ai-engine/ # AI 引擎组件
-│ │ ├── ai-assistant.tsx
-│ │ ├── ai-dashboard.tsx
-│ │ ├── intelligent-analysis.tsx
-│ │ ├── recommendation-engine.tsx
-│ │ ├── machine-learning.tsx
-│ │ ├── data-mining.tsx
-│ │ ├── storage-management.tsx
-│ │ ├── knowledge-base.tsx
-│ │ └── development-environment.tsx
-│ │
-│ ├── 📁 business/ # 业务管理组件
-│ │ ├── business-management.tsx
-│ │ ├── finance-management.tsx
-│ │ ├── order-management.tsx
-│ │ ├── erp-system.tsx
-│ │ ├── crm-customer.tsx
-│ │ └── supply-chain.tsx
-│ │
-│ ├── 📁 user-management/ # 用户管理组件
-│ │ ├── user-list.tsx
-│ │ ├── user-details.tsx
-│ │ ├── add-user.tsx
-│ │ ├── user-configuration.tsx
-│ │ ├── ban-management.tsx
-│ │ └── role-permissions.tsx
-│ │
-│ ├── 📁 system-settings/ # 系统设置组件
-│ │ ├── general-settings.tsx
-│ │ ├── security-settings.tsx
-│ │ ├── permission-management.tsx
-│ │ ├── privacy-settings.tsx
-│ │ ├── notification-settings.tsx
-│ │ └── appearance-settings.tsx
-│ │
-│ ├── 📁 profile/ # 个人资料组件
-│ │ ├── basic-info.tsx
-│ │ ├── edit-profile.tsx
-│ │ ├── avatar-settings.tsx
-│ │ ├── contact-info.tsx
-│ │ ├── address-info.tsx
-│ │ └── account-security.tsx
-│ │
-│ ├── 📁 project-management/ # 项目管理组件
-│ │ ├── project-overview.tsx
-│ │ ├── task-management.tsx
-│ │ ├── agile-workflow.tsx
-│ │ └── development-execution.tsx
-│ │
-│ ├── 📁 design-system/ # 设计系统组件
-│ │ ├── logo.tsx
-│ │ ├── logo-enhanced.tsx
-│ │ ├── design-tokens.tsx
-│ │ ├── button-system.tsx
-│ │ ├── enhanced-button-system.tsx
-│ │ ├── card-system.tsx
-│ │ ├── enhanced-card-system.tsx
-│ │ ├── animation-system.tsx
-│ │ ├── dynamic-background.tsx
-│ │ ├── background-controls.tsx
-│ │ ├── seasonal-themes.tsx
-│ │ ├── seasonal-controls.tsx
-│ │ ├── sound-system.tsx
-│ │ ├── header-actions.tsx
-│ │ ├── navigation-enhanced.tsx
-│ │ ├── scrollable-navigation.tsx
-│ │ └── responsive-layout.tsx
-│ │
-│ ├── 📁 navigation/ # 导航组件
-│ │ ├── optimized-navigation-system.tsx
-│ │ └── enhanced-navigation.tsx
-│ │
-│ ├── 📁 data-center/ # 数据中心组件
-│ │ ├── dynamic-data-center.tsx
-│ │ ├── collaboration-engine.tsx
-│ │ └── wechat-integration.tsx
-│ │
-│ ├── 📁 devops/ # DevOps 组件
-│ │ └── ci-cd-dashboard.tsx
-│ │
-│ ├── 📁 workflow/ # 工作流组件
-│ │ └── contract-approval.tsx
-│ │
-│ ├── 📁 mobile/ # 移动端组件
-│ │ └── mobile-dashboard.tsx
-│ │
-│ ├── 📁 plugin-system/ # 插件系统组件
-│ │ ├── plugin-manager.tsx
-│ │ ├── plugin-store.tsx
-│ │ └── plugin-developer.tsx
-│ │
-│ ├── 📁 multi-tenant/ # 多租户组件
-│ │ └── tenant-management.tsx
-│ │
-│ ├── 📁 integrations/ # 集成组件
-│ │ ├── integration-hub.tsx
-│ │ ├── api-gateway.tsx
-│ │ └── webhook-manager.tsx
-│ │
-│ ├── 📁 planning/ # 规划组件
-│ │ └── development-priority-roadmap.tsx
-│ │
-│ ├── 📁 system/ # 系统组件
-│ │ └── comprehensive-feature-analysis.tsx
-│ │
-│ ├── 📁 dashboard/ # 仪表板组件
-│ │ └── main-dashboard.tsx
-│ │
-│ ├── 📁 common/ # 通用组件
-│ │ ├── kpi-card.tsx
-│ │ ├── data-table.tsx
-│ │ └── approval-flow.tsx
-│ │
-│ ├── 📁 atoms/ # Storybook 原子组件
-│ │ ├── 📁 Button/
-│ │ │ ├── Button.tsx
-│ │ │ ├── Button.stories.tsx
-│ │ │ └── Button.mdx
-│ │ ├── 📁 Input/
-│ │ │ ├── Input.tsx
-│ │ │ └── Input.stories.tsx
-│ │ └── 📁 Badge/
-│ │ ├── Badge.tsx
-│ │ └── Badge.stories.tsx
-│ │
-│ └── theme-provider.tsx # 主题提供者
+│   │
+│   ├── 📁 data-analysis/ # 数据分析组件
+│   │   ├── data-overview.tsx
+│   │   ├── user-analysis.tsx
+│   │   ├── business-analysis.tsx
+│   │   ├── real-time-monitoring.tsx
+│   │   ├── report-center.tsx
+│   │   └── data-alert.tsx
+│   │
+│   ├── 📁 ai-engine/ # AI 引擎组件
+│   │   ├── ai-assistant.tsx
+│   │   ├── ai-dashboard.tsx
+│   │   ├── intelligent-analysis.tsx
+│   │   ├── recommendation-engine.tsx
+│   │   ├── machine-learning.tsx
+│   │   ├── data-mining.tsx
+│   │   ├── storage-management.tsx
+│   │   ├── knowledge-base.tsx
+│   │   └── development-environment.tsx
+│   │
+│   ├── 📁 business/ # 业务管理组件
+│   │   ├── business-management.tsx
+│   │   ├── finance-management.tsx
+│   │   ├── order-management.tsx
+│   │   ├── erp-system.tsx
+│   │   ├── crm-customer.tsx
+│   │   └── supply-chain.tsx
+│   │
+│   ├── 📁 user-management/ # 用户管理组件
+│   │   ├── user-list.tsx
+│   │   ├── user-details.tsx
+│   │   ├── add-user.tsx
+│   │   ├── user-configuration.tsx
+│   │   ├── ban-management.tsx
+│   │   └── role-permissions.tsx
+│   │
+│   ├── 📁 system-settings/ # 系统设置组件
+│   │   ├── general-settings.tsx
+│   │   ├── security-settings.tsx
+│   │   ├── permission-management.tsx
+│   │   ├── privacy-settings.tsx
+│   │   ├── notification-settings.tsx
+│   │   └── appearance-settings.tsx
+│   │
+│   ├── 📁 profile/ # 个人资料组件
+│   │   ├── basic-info.tsx
+│   │   ├── edit-profile.tsx
+│   │   ├── avatar-settings.tsx
+│   │   ├── contact-info.tsx
+│   │   ├── address-info.tsx
+│   │   └── account-security.tsx
+│   │
+│   ├── 📁 project-management/ # 项目管理组件
+│   │   ├── project-overview.tsx
+│   │   ├── task-management.tsx
+│   │   ├── agile-workflow.tsx
+│   │   └── development-execution.tsx
+│   │
+│   ├── 📁 design-system/ # 设计系统组件
+│   │   ├── logo.tsx
+│   │   ├── logo-enhanced.tsx
+│   │   ├── design-tokens.tsx
+│   │   ├── button-system.tsx
+│   │   ├── enhanced-button-system.tsx
+│   │   ├── card-system.tsx
+│   │   ├── enhanced-card-system.tsx
+│   │   ├── animation-system.tsx
+│   │   ├── dynamic-background.tsx
+│   │   ├── background-controls.tsx
+│   │   ├── seasonal-themes.tsx
+│   │   ├── seasonal-controls.tsx
+│   │   ├── sound-system.tsx
+│   │   ├── header-actions.tsx
+│   │   ├── navigation-enhanced.tsx
+│   │   ├── scrollable-navigation.tsx
+│   │   └── responsive-layout.tsx
+│   │
+│   ├── 📁 navigation/ # 导航组件
+│   │   ├── optimized-navigation-system.tsx
+│   │   └── enhanced-navigation.tsx
+│   │
+│   ├── 📁 data-center/ # 数据中心组件
+│   │   ├── dynamic-data-center.tsx
+│   │   ├── collaboration-engine.tsx
+│   │   └── wechat-integration.tsx
+│   │
+│   ├── 📁 devops/ # DevOps 组件
+│   │   └── ci-cd-dashboard.tsx
+│   │
+│   ├── 📁 workflow/ # 工作流组件
+│   │   └── contract-approval.tsx
+│   │
+│   ├── 📁 mobile/ # 移动端组件
+│   │   └── mobile-dashboard.tsx
+│   │
+│   ├── 📁 plugin-system/ # 插件系统组件
+│   │   ├── plugin-manager.tsx
+│   │   ├── plugin-store.tsx
+│   │   └── plugin-developer.tsx
+│   │
+│   ├── 📁 multi-tenant/ # 多租户组件
+│   │   └── tenant-management.tsx
+│   │
+│   ├── 📁 integrations/ # 集成组件
+│   │   ├── integration-hub.tsx
+│   │   ├── api-gateway.tsx
+│   │   └── webhook-manager.tsx
+│   │
+│   ├── 📁 planning/ # 规划组件
+│   │   └── development-priority-roadmap.tsx
+│   │
+│   ├── 📁 system/ # 系统组件
+│   │   └── comprehensive-feature-analysis.tsx
+│   │
+│   ├── 📁 dashboard/ # 仪表板组件
+│   │   └── main-dashboard.tsx
+│   │
+│   ├── 📁 common/ # 通用组件
+│   │   ├── kpi-card.tsx
+│   │   ├── data-table.tsx
+│   │   └── approval-flow.tsx
+│   │
+│   ├── 📁 atoms/ # Storybook 原子组件
+│   │   ├── 📁 Button/
+│   │   │   ├── Button.tsx
+│   │   │   ├── Button.stories.tsx
+│   │   │   └── Button.mdx
+│   │   ├── 📁 Input/
+│   │   │   ├── Input.tsx
+│   │   │   └── Input.stories.tsx
+│   │   └── 📁 Badge/
+│   │       ├── Badge.tsx
+│   │       └── Badge.stories.tsx
+│   │
+│   └── theme-provider.tsx # 主题提供者
 │
 ├── 📁 hooks/ # 自定义 Hooks
-│ ├── use-mobile.ts # 移动端检测
-│ ├── use-toast.ts # Toast 通知
-│ └── use-websocket.ts # WebSocket Hook
+│   ├── use-mobile.ts # 移动端检测
+│   ├── use-toast.ts # Toast 通知
+│   └── use-websocket.ts # WebSocket Hook
 │
 ├── 📁 lib/ # 工具库
-│ └── utils.ts # 通用工具函数
+│   └── utils.ts # 通用工具函数
 │
 ├── 📁 types/ # 前端类型定义
-│ └── websocket.ts # WebSocket 类型
+│   └── websocket.ts # WebSocket 类型
 │
 ├── 📁 docs/ # 文档
-│ ├── technical-specifications.tsx
-│ ├── development-roadmap.tsx
-│ ├── current-status-analysis.tsx
-│ ├── development-analysis-report.tsx
-│ ├── system-status-analysis.tsx
-│ ├── next-development-plan.tsx
-│ ├── navigation-analysis-report.tsx
-│ ├── navigation-structure-analysis.tsx
-│ ├── navigation-optimization-report.tsx
-│ ├── system-comprehensive-review-report.tsx
-│ ├── functional-assessment-report.tsx
-│ ├── MODULE_DEPENDENCIES.md
-│ └── DEPLOYMENT_TROUBLESHOOTING.md
+│   ├── technical-specifications.tsx
+│   ├── development-roadmap.tsx
+│   ├── current-status-analysis.tsx
+│   ├── development-analysis-report.tsx
+│   ├── system-status-analysis.tsx
+│   ├── next-development-plan.tsx
+│   ├── navigation-analysis-report.tsx
+│   ├── navigation-structure-analysis.tsx
+│   ├── navigation-optimization-report.tsx
+│   ├── system-comprehensive-review-report.tsx
+│   ├── functional-assessment-report.tsx
+│   ├── MODULE_DEPENDENCIES.md
+│   └── DEPLOYMENT_TROUBLESHOOTING.md
 │
 ├── 📁 database/ # 数据库文件
-│ ├── 📁 migrations/ # 数据库迁移
-│ │ └── 001_create_reconciliation_tables.sql
-│ └── 📁 seeds/ # 数据库种子
-│ └── 001_sample_data.sql
+│   ├── 📁 migrations/ # 数据库迁移
+│   │   └── 001_create_reconciliation_tables.sql
+│   └── 📁 seeds/ # 数据库种子
+│       └── 001_sample_data.sql
 │
 ├── 📁 scripts/ # 脚本文件
-│ ├── Dockerfile # Docker 镜像
-│ ├── docker-compose.dev.yml # 开发环境编排
-│ ├── docker-compose.prod.yml # 生产环境编排
-│ ├── deploy.sh # 部署脚本
-│ ├── prometheus.yml # Prometheus 配置
-│ ├── package.json # 脚本依赖
-│ └── test-setup.js # 测试配置
+│   ├── Dockerfile # Docker 镜像
+│   ├── docker-compose.dev.yml # 开发环境编排
+│   ├── docker-compose.prod.yml # 生产环境编排
+│   ├── deploy.sh # 部署脚本
+│   ├── prometheus.yml # Prometheus 配置
+│   ├── grafana-dashboard.json # Grafana 仪表板配置
+│   ├── package.json # 脚本依赖
+│   └── test-setup.js # 测试配置
 │
 ├── 📁 .github/ # GitHub 配置
-│ └── 📁 workflows/
-│ ├── ci-cd.yml # CI/CD 工作流
-│ └── chromatic.yml # Chromatic 工作流
+│   └── 📁 workflows/
+│       ├── ci-cd.yml # CI/CD 工作流
+│       └── chromatic.yml # Chromatic 工作流
 │
 ├── 📁 .storybook/ # Storybook 配置
-│ ├── main.ts # Storybook 主配置
-│ └── preview.tsx # Storybook 预览配置
+│   ├── main.ts # Storybook 主配置
+│   └── preview.tsx # Storybook 预览配置
 │
 ├── 📁 design-system/ # 设计系统
-│ ├── 📁 components/
-│ │ └── Button.tsx
-│ ├── 📁 stories/
-│ │ └── Button.stories.tsx
-│ ├── 📁 .storybook/
-│ │ ├── main.ts
-│ │ └── preview.ts
-│ ├── design-tokens.ts
-│ ├── tailwind.config.ts
-│ ├── postcss.config.js
-│ ├── tsconfig.json
-│ └── package.json
+│   ├── 📁 components/
+│   │   └── Button.tsx
+│   ├── 📁 stories/
+│   │   └── Button.stories.tsx
+│   ├── 📁 .storybook/
+│   │   ├── main.ts
+│   │   └── preview.ts
+│   ├── design-tokens.ts
+│   ├── tailwind.config.ts
+│   ├── postcss.config.js
+│   ├── tsconfig.json
+│   └── package.json
 │
 ├── 📁 design-tokens/ # 设计令牌
-│ └── tokens.ts
+│   └── tokens.ts
 │
 ├── 📁 package-ui/ # UI 组件包
-│ ├── 📁 src/
-│ │ ├── 📁 components/
-│ │ │ └── 📁 Button/
-│ │ │ └── Button.test.tsx
-│ │ ├── 📁 test/
-│ │ │ └── setup.ts
-│ │ └── index.ts
-│ ├── package.json
-│ ├── tsup.config.ts
-│ ├── vitest.config.ts
-│ └── README.md
+│   ├── 📁 src/
+│   │   ├── 📁 components/
+│   │   │   └── 📁 Button/
+│   │   │       └── Button.test.tsx
+│   │   ├── 📁 test/
+│   │   │   └── setup.ts
+│   │   └── index.ts
+│   ├── package.json
+│   ├── tsup.config.ts
+│   ├── vitest.config.ts
+│   └── README.md
 │
 ├── 📁 styles/ # 样式文件
-│ ├── globals.css # 全局样式
-│ ├── base.css # 基础样式
-│ ├── variables.css # CSS 变量
-│ └── theme-map.css # 主题映射
+│   ├── globals.css # 全局样式
+│   ├── base.css # 基础样式
+│   ├── variables.css # CSS 变量
+│   └── theme-map.css # 主题映射
 │
 ├── 📁 public/ # 静态资源
-│ ├── logo.png
-│ ├── placeholder-logo.png
-│ ├── placeholder-logo.svg
-│ ├── placeholder-user.jpg
-│ ├── placeholder.jpg
-│ ├── placeholder.svg
-│ └── generic-placeholder-graphic.png
+│   ├── logo.png
+│   ├── placeholder-logo.png
+│   ├── placeholder-logo.svg
+│   ├── placeholder-user.jpg
+│   ├── placeholder.jpg
+│   ├── placeholder.svg
+│   └── generic-placeholder-graphic.png
 │
 ├── admin-dashboard.tsx # 管理后台入口
 ├── enhanced-admin-dashboard.tsx # 增强版管理后台
@@ -504,6 +505,8 @@ yanyu-cloud3/
 ├── next.config.mjs # Next.js 配置
 ├── tsconfig.json # TypeScript 配置
 ├── package.json # 前端依赖
+├── pnpm-lock.yaml # pnpm 锁定文件
+├── pnpm-workspace.yaml # pnpm 工作空间配置
 ├── .env.example # 环境变量示例
 ├── .env.local # 本地环境变量
 ├── .env # 环境变量
@@ -517,6 +520,7 @@ yanyu-cloud3/
 ├── 组件数量：100+
 ├── API 接口：50+
 ├── 测试用例：80+
+└── 文档页面：20+
 └── 文档页面：20+
 ```
 
@@ -765,7 +769,7 @@ SUPPORTED_LOCALES=zh-CN,en-US,ja-JP
 
 ### 数据库索引
 
-\`\`\`sql
+```sql
 -- 对账记录索引
 CREATE INDEX idx_reconciliation_status ON reconciliation_records(status);
 CREATE INDEX idx_reconciliation_date ON reconciliation_records(transaction_date);
@@ -779,7 +783,7 @@ CREATE INDEX idx_exception_status ON reconciliation_exceptions(resolution_status
 CREATE INDEX idx_ticket_status ON tickets(status);
 CREATE INDEX idx_ticket_assigned ON tickets(assigned_to);
 CREATE INDEX idx_ticket_created ON tickets(created_at);
-\`\`\`
+```
 
 ---
 
@@ -794,17 +798,17 @@ CREATE INDEX idx_ticket_created ON tickets(created_at);
 
 所有 API 请求需要在 Header 中携带 JWT Token：
 
-\`\`\`
+```
 Authorization: Bearer <your_jwt_token>
-\`\`\`
+```
 
 ### 1. 对账管理 API
 
 #### 1.1 获取对账记录列表
 
-\`\`\`http
+```http
 GET /api/reconciliation/records
-\`\`\`
+```
 
 **Query 参数：**
 
@@ -819,7 +823,7 @@ GET /api/reconciliation/records
 
 **响应示例：**
 
-\`\`\`json
+```json
 {
 "success": true,
 "data": [
@@ -843,17 +847,17 @@ GET /api/reconciliation/records
 "hasMore": true
 }
 }
-\`\`\`
+```
 
 #### 1.2 创建对账记录
 
-\`\`\`http
+```http
 POST /api/reconciliation/records
-\`\`\`
+```
 
 **请求体：**
 
-\`\`\`json
+```json
 {
 "transactionDate": "2024-01-06",
 "transactionType": "payment",
@@ -863,11 +867,11 @@ POST /api/reconciliation/records
 "customerName": "上海某公司",
 "category": "procurement"
 }
-\`\`\`
+```
 
 **响应：**
 
-\`\`\`json
+```json
 {
 "success": true,
 "data": {
@@ -877,17 +881,17 @@ POST /api/reconciliation/records
 "createdAt": "2024-01-06T08:00:00Z"
 }
 }
-\`\`\`
+```
 
 #### 1.3 执行自动对账
 
-\`\`\`http
+```http
 POST /api/reconciliation/auto-reconcile
-\`\`\`
+```
 
 **响应：**
 
-\`\`\`json
+```json
 {
 "success": true,
 "data": {
@@ -897,17 +901,17 @@ POST /api/reconciliation/auto-reconcile
 "executionTime": 2500
 }
 }
-\`\`\`
+```
 
 #### 1.4 获取对账统计
 
-\`\`\`http
+```http
 GET /api/reconciliation/stats
-\`\`\`
+```
 
 **响应：**
 
-\`\`\`json
+```json
 {
 "success": true,
 "data": {
@@ -918,16 +922,16 @@ GET /api/reconciliation/stats
 "exceptionCount": 15
 }
 }
-\`\`\`
+```
 
 ### 2. CSV 导入 API
 
 #### 2.1 上传 CSV 文件
 
-\`\`\`http
+```http
 POST /api/csv-import/upload
 Content-Type: multipart/form-data
-\`\`\`
+```
 
 **请求参数：**
 
@@ -937,7 +941,7 @@ Content-Type: multipart/form-data
 
 **响应：**
 
-\`\`\`json
+```json
 {
 "success": true,
 "data": {
@@ -950,17 +954,17 @@ Content-Type: multipart/form-data
 "status": "completed"
 }
 }
-\`\`\`
+```
 
 #### 2.2 获取导入批次列表
 
-\`\`\`http
+```http
 GET /api/csv-import/batches
-\`\`\`
+```
 
 **响应：**
 
-\`\`\`json
+```json
 {
 "success": true,
 "data": [
@@ -975,19 +979,19 @@ GET /api/csv-import/batches
 }
 ]
 }
-\`\`\`
+```
 
 ### 3. AI 分析 API
 
 #### 3.1 分析单条异常记录
 
-\`\`\`http
+```http
 POST /api/ai-analysis/analyze/:recordId
-\`\`\`
+```
 
 **响应：**
 
-\`\`\`json
+```json
 {
 "success": true,
 "data": {
@@ -1010,25 +1014,25 @@ POST /api/ai-analysis/analyze/:recordId
 "modelVersion": "gpt-4o"
 }
 }
-\`\`\`
+```
 
 #### 3.2 批量分析异常记录
 
-\`\`\`http
+```http
 POST /api/ai-analysis/analyze-batch
-\`\`\`
+```
 
 **请求体：**
 
-\`\`\`json
+```json
 {
 "recordIds": ["uuid1", "uuid2", "uuid3"]
 }
-\`\`\`
+```
 
 **响应：**
 
-\`\`\`json
+```json
 {
 "success": true,
 "data": {
@@ -1044,26 +1048,26 @@ POST /api/ai-analysis/analyze-batch
 ]
 }
 }
-\`\`\`
+```
 
 #### 3.3 分析异常趋势
 
-\`\`\`http
+```http
 POST /api/ai-analysis/analyze-trends
-\`\`\`
+```
 
 **请求体：**
 
-\`\`\`json
+```json
 {
 "startDate": "2024-01-01",
 "endDate": "2024-01-31"
 }
-\`\`\`
+```
 
 **响应：**
 
-\`\`\`json
+```json
 {
 "success": true,
 "data": {
@@ -1082,15 +1086,15 @@ POST /api/ai-analysis/analyze-trends
 ]
 }
 }
-\`\`\`
+```
 
 ### 4. 工单管理 API
 
 #### 4.1 获取工单列表
 
-\`\`\`http
+```http
 GET /api/tickets
-\`\`\`
+```
 
 **Query 参数：**
 
@@ -1104,7 +1108,7 @@ GET /api/tickets
 
 **响应：**
 
-\`\`\`json
+```json
 {
 "success": true,
 "data": [
@@ -1120,55 +1124,55 @@ GET /api/tickets
 }
 ]
 }
-\`\`\`
+```
 
 #### 4.2 创建工单
 
-\`\`\`http
+```http
 POST /api/tickets
-\`\`\`
+```
 
 **请求体：**
 
-\`\`\`json
+```json
 {
 "title": "系统登录异常",
 "description": "用户反馈无法登录系统",
 "category": "technical",
 "priority": "high"
 }
-\`\`\`
+```
 
 #### 4.3 添加工单消息
 
-\`\`\`http
+```http
 POST /api/tickets/:id/messages
-\`\`\`
+```
 
 **请求体：**
 
-\`\`\`json
+```json
 {
 "content": "问题已定位，正在修复中",
 "isInternal": false
 }
-\`\`\`
+```
 
 ### 5. WebSocket API
 
 #### 5.1 连接 WebSocket
 
-\`\`\`javascript
+```javascript
 const socket = io('<http://localhost:3001>', {
 auth: {
 token: 'your_jwt_token'
 }
 });
-\`\`\`
+```
 
 #### 5.2 监听事件
 
-\`\`\`javascript
+```javascript
 // 连接成功
 socket.on('connect', () => {
 console.log('Connected to server');
@@ -1188,29 +1192,29 @@ console.log('Ticket updated:', data);
 socket.on('reconciliation:update', (data) => {
 console.log('Reconciliation updated:', data);
 });
-\`\`\`
+```
 
 #### 5.3 发送事件
 
-\`\`\`javascript
+```javascript
 // 加入房间
 socket.emit('join:room', { room: 'reconciliation' });
 
 // 心跳
 socket.emit('ping');
-\`\`\`
+```
 
 ### 6. 健康检查 API
 
 #### 6.1 系统健康检查
 
-\`\`\`http
+```http
 GET /api/health
-\`\`\`
+```
 
 **响应：**
 
-\`\`\`json
+```json
 {
 "status": "healthy",
 "timestamp": "2024-01-06T10:00:00Z",
@@ -1221,23 +1225,23 @@ GET /api/health
 "websocket": "healthy"
 }
 }
-\`\`\`
+```
 
 #### 6.2 Redis 健康检查
 
-\`\`\`http
+```http
 GET /api/health/redis
-\`\`\`
+```
 
 #### 6.3 WebSocket 健康检查
 
-\`\`\`http
+```http
 GET /api/health/websocket
-\`\`\`
+```
 
 ### API 错误响应格式
 
-\`\`\`json
+```json
 {
 "success": false,
 "error": {
@@ -1251,7 +1255,7 @@ GET /api/health/websocket
 ]
 }
 }
-\`\`\`
+```
 
 ### 常见错误码
 
@@ -1417,7 +1421,7 @@ GET /api/health/websocket
 
 ### 单元测试
 
-\`\`\`bash
+```bash
 
 # 运行所有单元测试
 
@@ -1431,11 +1435,11 @@ npm test -- reconciliation.service.test.ts
 # 生成测试覆盖率报告
 
 npm test -- --coverage
-\`\`\`
+```
 
 ### 集成测试
 
-\`\`\`bash
+```bash
 
 # 运行集成测试
 
@@ -1444,11 +1448,11 @@ npm run test:integration
 # 测试 API 端点
 
 npm run test:api
-\`\`\`
+```
 
 ### 性能测试
 
-\`\`\`bash
+```bash
 
 # K6 负载测试
 
@@ -1457,16 +1461,16 @@ k6 run backend/performance/k6-load-test.js
 # 缓存性能测试
 
 node backend/performance/cache-performance-test.js
-\`\`\`
+```
 
 ### E2E 测试
 
-\`\`\`bash
+```bash
 
 # 使用 Playwright
 
 npm run test:e2e
-\`\`\`
+```
 
 ### 测试覆盖率
 
@@ -1484,7 +1488,7 @@ npm run test:e2e
 
 ### 开发环境部署
 
-\`\`\`bash
+```bash
 
 # 1. 使用 Docker Compose
 
@@ -1497,13 +1501,13 @@ docker-compose logs -f
 # 3. 停止服务
 
 docker-compose down
-\`\`\`
+```
 
 ### 生产环境部署
 
 #### 方式一：Docker 部署
 
-\`\`\`bash
+```bash
 
 # 1. 构建镜像
 
@@ -1516,11 +1520,11 @@ docker-compose -f scripts/docker-compose.prod.yml up -d
 # 3. 查看健康状态
 
 curl <http://your-domain.com/api/health>
-\`\`\`
+```
 
 #### 方式二：传统部署
 
-\`\`\`bash
+```bash
 
 ## 1. 构建前端
 
@@ -1540,11 +1544,11 @@ npm start
 pm2 start npm --name "yanyu-backend" -- start
 pm2 save
 pm2 startup
-\`\`\`
+```
 
 ### Vercel 部署（前端）
 
-\`\`\`bash
+```bash
 
 ## 1. 安装 Vercel CLI
 
@@ -1557,13 +1561,13 @@ vercel login
 ## 3. 部署
 
 vercel --prod
-\`\`\`
+```
 
 ### 环境变量配置
 
 **生产环境必须配置的环境变量：**
 
-\`\`\`bash
+```bash
 
 ## 数据库
 
@@ -1587,11 +1591,11 @@ OPENAI_API_KEY=sk-your-production-key
 
 FRONTEND_BASE_URL=<https://your-domain.com>
 API_BASE_URL=<https://api.your-domain.com>
-\`\`\`
+```
 
 ### Nginx 配置示例
 
-\`\`\`nginx
+```nginx
 server {
 listen 80;
 server_name api.your-domain.com;
@@ -1613,7 +1617,7 @@ server_name api.your-domain.com;
     }
 
 }
-\`\`\`
+```
 
 ---
 
@@ -1623,7 +1627,7 @@ server_name api.your-domain.com;
 
 系统暴露以下 Prometheus 指标：
 
-\`\`\`
+```
 
 # HTTP 请求总数
 
@@ -1658,7 +1662,7 @@ websocket_connections_total
 
 ai_analysis_requests_total
 ai_analysis_duration_seconds
-\`\`\`
+```
 
 ### Grafana 仪表板
 
@@ -1689,7 +1693,7 @@ ai_analysis_duration_seconds
 
 **日志查看：**
 
-\`\`\`bash
+```bash
 
 # 查看实时日志
 
@@ -1702,13 +1706,13 @@ docker-compose logs backend | grep ERROR
 # 导出日志
 
 docker-compose logs backend > backend.log
-\`\`\`
+```
 
 ### 告警配置
 
 **告警规则示例（Prometheus）：**
 
-\`\`\`yaml
+```yaml
 groups:
 
 - name: yanyu_cloud3_alerts
@@ -1736,7 +1740,7 @@ groups:
     severity: warning
     annotations:
     summary: "Cache hit rate is low"
-    \`\`\`
+    ```
 
 ---
 
@@ -1744,7 +1748,7 @@ groups:
 
 ### Q1: 如何重置 Redis 缓存？
 
-\`\`\`bash
+```bash
 
 # 方式一：使用脚本
 
@@ -1753,11 +1757,11 @@ node backend/scripts/redis-flush.js
 # 方式二：使用 Redis CLI
 
 redis-cli FLUSHDB
-\`\`\`
+```
 
 ### Q2: 如何处理数据库迁移失败？
 
-\`\`\`bash
+```bash
 
 # 1. 检查迁移状态
 
@@ -1774,7 +1778,7 @@ npm run migrate
 # 4. 如果需要完全重置数据库
 
 npm run migrate:fresh
-\`\`\`
+```
 
 ### Q3: WebSocket 连接失败怎么办？
 
@@ -1786,7 +1790,7 @@ npm run migrate:fresh
 4. 检查防火墙规则
 5. 查看浏览器控制台错误
 
-\`\`\`javascript
+```javascript
 // 调试 WebSocket 连接
 const socket = io('<http://localhost:3001>', {
 auth: { token: 'your_token' },
@@ -1799,7 +1803,7 @@ reconnectionAttempts: 5
 socket.on('connect_error', (error) => {
 console.error('Connection error:', error);
 });
-\`\`\`
+```
 
 ### Q4: AI 分析返回错误怎么办？
 
@@ -1812,13 +1816,13 @@ console.error('Connection error:', error);
 | INSUFFICIENT_QUOTA     | 配额不足     | 充值 OpenAI 账户                    |
 | TIMEOUT                | 请求超时     | 增加超时时间或重试                  |
 
-\`\`\`bash
+```bash
 
 # 测试 OpenAI 连接
 
 curl -X GET <http://localhost:3001/api/ai-analysis/health> \
  -H "Authorization: Bearer your_jwt_token"
-\`\`\`
+```
 
 ### Q5: 如何优化系统性能？
 
@@ -1846,7 +1850,7 @@ curl -X GET <http://localhost:3001/api/ai-analysis/health> \
 
 ### Q6: 如何备份和恢复数据？
 
-\`\`\`bash
+```bash
 
 # 备份 PostgreSQL
 
@@ -1866,11 +1870,11 @@ cp /var/lib/redis/dump.rdb backup_dump.rdb
 redis-cli SHUTDOWN
 cp backup_dump.rdb /var/lib/redis/dump.rdb
 redis-server
-\`\`\`
+```
 
 ### Q7: 如何调试生产环境问题？
 
-\`\`\`bash
+```bash
 
 # 1. 查看实时日志
 
@@ -1891,7 +1895,7 @@ docker exec -it backend-container sh
 # 5. 检查数据库连接
 
 docker exec -it postgres-container psql -U postgres
-\`\`\`
+```
 
 ---
 
@@ -1900,26 +1904,26 @@ docker exec -it postgres-container psql -U postgres
 ### 开发流程
 
 1. **Fork 项目**
-   \`\`\`bash
+   ```bash
    git clone <https://github.com/YY-Nexus/YYC-AI-management.git>
    cd YYC-AI-management
-   \`\`\`
+   ```
 
 2. **创建功能分支**
-   \`\`\`bash
+   ```bash
    git checkout -b feature/your-feature-name
-   \`\`\`
+   ```
 
 3. **提交代码**
-   \`\`\`bash
+   ```bash
    git add .
    git commit -m "feat: add your feature description"
-   \`\`\`
+   ```
 
 4. **推送到远程**
-   \`\`\`bash
+   ```bash
    git push origin feature/your-feature-name
-   \`\`\`
+   ```
 
 5. **创建 Pull Request**
    - 在 GitHub 上创建 PR
@@ -1930,7 +1934,7 @@ docker exec -it postgres-container psql -U postgres
 
 **TypeScript 规范：**
 
-\`\`\`typescript
+```typescript
 // 使用接口定义类型
 interface User {
 id: string;
@@ -1948,7 +1952,7 @@ return user;
 function createUser({ name, email }: Partial<User> = {}) {
 // ...
 }
-\`\`\`
+```
 
 **命名规范：**
 
@@ -1959,7 +1963,7 @@ function createUser({ name, email }: Partial<User> = {}) {
 
 **提交信息规范：**
 
-\`\`\`bash
+```bash
 
 # 格式：<type>(<scope>): <subject>
 
@@ -1970,7 +1974,7 @@ style(ui): format button component
 refactor(service): optimize cache logic
 test(unit): add user service tests
 chore(deps): update dependencies
-\`\`\`
+```
 
 ### 测试要求
 
@@ -1992,7 +1996,7 @@ chore(deps): update dependencies
 
 本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
 
-\`\`\`
+```
 MIT License
 
 Copyright (c) 2024 YY-Nexus
@@ -2014,7 +2018,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-\`\`\`
+```
 
 ---
 
