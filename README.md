@@ -4,7 +4,7 @@
 
 ![YanYu Cloud³](public/logo.png)
 
-**新一代企业级智能业务管理平台**
+### 新一代企业级智能业务管理平台
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-14.0-black?logo=next.js)](https://nextjs.org/)
@@ -25,7 +25,6 @@
 - [完整文件树](#-完整文件树)
 - [快速开始](#-快速开始)
 - [环境配置](#️-环境配置)
-- [数据库设计](#-数据库设计)
 - [API 接口文档](#-api-接口文档)
 - [模块说明](#-模块说明)
 - [测试指南](#-测试指南)
