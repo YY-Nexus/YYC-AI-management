@@ -1,72 +1,29 @@
-{{{
-
+{
   "cSpell.words": [
-
-    "shadcn",  "cSpell.words": [  "cSpell.words": [
-
+    "shadcn",
     "wechat",
-
-    "VARCHAR",    "shadcn",    "shadcn",
-
+    "VARCHAR",
     "FLUSHDB",
-
-    "BGSAVE",    "wechat",     "wechat",
-
+    "BGSAVE",
     "yanyu",
-
-    "dingtalk",    "VARCHAR",    "VARCHAR",
-
+    "dingtalk",
     "postgres",
-
-    "redis",    "FLUSHDB",    "FLUSHDB",
-
+    "redis",
     "nextjs",
-
-    "tailwindcss",    "BGSAVE",    "BGSAVE",
-
+    "tailwindcss",
     "typescript",
-
-    "websocket",    "yanyu",    "yanyu",
-
+    "websocket",
     "postgresql",
-
-    "openai",    "dingtalk"    "postgres",
-
+    "openai",
     "kubernetes",
-
-    "grafana",  ]    "redis",
-
+    "grafana",
     "prometheus",
-
-    "nginx",}    "nextjs",
-
-    "docker",    "tailwindcss",
-
-    "pnpm",    "typescript",
-
-    "vitest",    "websocket",
-
-    "storybook",    "postgresql",
-
-    "eslint",    "openai",
-
-    "tsup",    "kubernetes",
-
-    "postcss",    "grafana",
-
-    "middleware",    "prometheus",
-
-    "backend",    "nginx",
-
-    "frontend",    "docker",
-
-    "packagejson",    "gitlab",
-
-    "nodemodules"    "github",
-
-  ]    "pnpm",
-
-}    "vitest",
+    "nginx",
+    "docker",
+    "gitlab",
+    "github",
+    "pnpm",
+    "vitest",
     "storybook",
     "eslint",
     "tsup",
@@ -95,9 +52,7 @@
     "dockerfile",
     "gitignore",
     "tsconfig",
-    "packagejson",
     "lockfile",
-    "nodemodules",
     "dist",
     "build",
     "src",
@@ -105,24 +60,5 @@
     "prod",
     "staging",
     "localhost"
-  ],
-  "cSpell.enabledFileTypes": [
-    "markdown",
-    "typescript",
-    "javascript",
-    "json",
-    "yaml",
-    "dockerfiles"
-  ],
-  "cSpell.ignorePaths": [
-    "node_modules",
-    "dist",
-    "build",
-    ".git",
-    "*.min.js",
-    "*.min.css",
-    "package-lock.json",
-    "pnpm-lock.yaml",
-    "yarn.lock"
   ]
 }
