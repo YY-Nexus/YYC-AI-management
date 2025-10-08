@@ -142,17 +142,14 @@ export default function DataAlert() {import { EnhancedButton } from "../design-s
 
           <p className="text-muted-foreground">  value: string | number
 
-            监控系统数据异常，及时发送警报通知  dataType: "number" | "string" | "boolean" | "date"
-
-          </p>}
+            监控系统数据异常，及时发送警报通知
+          </p>
 
         </div>
 
-        <Buttoninterface AlertRule {
-
-          onClick={() => setIsConfiguring(!isConfiguring)}  id: string
-
-          variant="outline"  name: string
+        <Button
+          onClick={() => setIsConfiguring(!isConfiguring)}
+          variant="outline"
 
         >  description: string
 

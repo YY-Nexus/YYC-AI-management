@@ -74,13 +74,13 @@
     "*.min.css",
     "package-lock.json",
     "pnpm-lock.yaml",
-    "yarn.lock"
+    "yarn.lock",
+    "cspell.json"
   ],
   "enabledLanguageIds": [
     "markdown",
     "typescript",
     "javascript",
-    "json",
     "yaml"
   ]
 }

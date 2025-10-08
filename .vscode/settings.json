@@ -1,38 +1,72 @@
-{{
+{{{
 
-  "cSpell.words": [  "cSpell.words": [
+  "cSpell.words": [
 
-    "shadcn",    "shadcn",
+    "shadcn",  "cSpell.words": [  "cSpell.words": [
 
-    "wechat",     "wechat",
+    "wechat",
 
-    "VARCHAR",    "VARCHAR",
+    "VARCHAR",    "shadcn",    "shadcn",
 
-    "FLUSHDB",    "FLUSHDB",
+    "FLUSHDB",
 
-    "BGSAVE",    "BGSAVE",
+    "BGSAVE",    "wechat",     "wechat",
 
-    "yanyu",    "yanyu",
+    "yanyu",
 
-    "dingtalk"    "postgres",
+    "dingtalk",    "VARCHAR",    "VARCHAR",
 
-  ]    "redis",
+    "postgres",
 
-}    "nextjs",
-    "tailwindcss",
+    "redis",    "FLUSHDB",    "FLUSHDB",
+
+    "nextjs",
+
+    "tailwindcss",    "BGSAVE",    "BGSAVE",
+
     "typescript",
-    "websocket",
+
+    "websocket",    "yanyu",    "yanyu",
+
     "postgresql",
-    "openai",
+
+    "openai",    "dingtalk"    "postgres",
+
     "kubernetes",
-    "grafana",
+
+    "grafana",  ]    "redis",
+
     "prometheus",
-    "nginx",
-    "docker",
-    "gitlab",
-    "github",
-    "pnpm",
-    "vitest",
+
+    "nginx",}    "nextjs",
+
+    "docker",    "tailwindcss",
+
+    "pnpm",    "typescript",
+
+    "vitest",    "websocket",
+
+    "storybook",    "postgresql",
+
+    "eslint",    "openai",
+
+    "tsup",    "kubernetes",
+
+    "postcss",    "grafana",
+
+    "middleware",    "prometheus",
+
+    "backend",    "nginx",
+
+    "frontend",    "docker",
+
+    "packagejson",    "gitlab",
+
+    "nodemodules"    "github",
+
+  ]    "pnpm",
+
+}    "vitest",
     "storybook",
     "eslint",
     "tsup",
