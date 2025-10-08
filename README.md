@@ -148,122 +148,122 @@ YanYu Cloud³ 是一个现代化的企业级智能业务管理系统，集成了
 
 ## 📁 完整文件树
 
-\`\`\`
+```text
 yanyu-cloud3/
 ├── 📁 app/ # Next.js App Router
-│ ├── layout.tsx # 根布局
-│ ├── page.tsx # 首页
-│ └── globals.css # 全局样式
+│   ├── layout.tsx # 根布局
+│   ├── page.tsx # 首页
+│   └── globals.css # 全局样式
 │
 ├── 📁 backend/ # 后端服务
-│ ├── 📁 src/
-│ │ ├── 📁 config/ # 配置文件
-│ │ │ ├── database.ts # 数据库配置
-│ │ │ ├── redis.ts # Redis 配置
-│ │ │ ├── logger.ts # 日志配置
-│ │ │ └── metrics.ts # Prometheus 指标
-│ │ │
-│ │ ├── 📁 types/ # TypeScript 类型定义
-│ │ │ ├── reconciliation.ts # 对账类型
-│ │ │ ├── ticket.ts # 工单类型
-│ │ │ ├── ai-analysis.ts # AI 分析类型
-│ │ │ └── websocket.ts # WebSocket 类型
-│ │ │
-│ │ ├── 📁 services/ # 业务逻辑层
-│ │ │ ├── reconciliation.service.ts # 对账服务
-│ │ │ ├── reconciliation.service.cached.ts # 对账服务（缓存版）
-│ │ │ ├── csv-import.service.ts # CSV 导入服务
-│ │ │ ├── ticket.service.ts # 工单服务
-│ │ │ ├── cache.service.ts # 缓存服务
-│ │ │ ├── redis-pubsub.service.ts # Redis 发布订阅
-│ │ │ ├── websocket.service.ts # WebSocket 服务
-│ │ │ ├── notification.service.ts # 通知服务
-│ │ │ ├── openai.service.ts # OpenAI 服务
-│ │ │ ├── prompt-templates.service.ts # 提示词模板服务
-│ │ │ └── ai-analysis.service.ts # AI 分析服务
-│ │ │
-│ │ ├── 📁 routes/ # API 路由
-│ │ │ ├── reconciliation.routes.ts # 对账路由
-│ │ │ ├── reconciliation.routes.cached.ts # 对账路由（缓存版）
-│ │ │ ├── csv-import.routes.ts # CSV 导入路由
-│ │ │ ├── tickets.routes.ts # 工单路由
-│ │ │ ├── ai-analysis.routes.ts # AI 分析路由
-│ │ │ ├── websocket.routes.ts # WebSocket 路由
-│ │ │ └── health.routes.ts # 健康检查路由
-│ │ │
-│ │ ├── 📁 middleware/ # 中间件
-│ │ │ ├── auth.middleware.ts # 认证中间件
-│ │ │ ├── cache.middleware.ts # 缓存中间件
-│ │ │ ├── validation.middleware.ts # 验证中间件
-│ │ │ ├── rate-limiter.middleware.ts # 限流中间件
-│ │ │ ├── circuit-breaker.middleware.ts # 熔断中间件
-│ │ │ └── error-handler.middleware.ts # 错误处理中间件
-│ │ │
-│ │ ├── 📁 **tests**/ # 测试文件
-│ │ │ ├── 📁 integration/
-│ │ │ │ ├── reconciliation.integration.test.ts
-│ │ │ │ ├── tickets.integration.test.ts
-│ │ │ │ └── ai-analysis.integration.test.ts
-│ │ │ └── 📁 unit/
-│ │ │ └── services/
-│ │ │ ├── reconciliation.service.test.ts
-│ │ │ ├── ticket.service.test.ts
-│ │ │ ├── cache.service.test.ts
-│ │ │ ├── openai.service.test.ts
-│ │ │ ├── ai-analysis.service.test.ts
-│ │ │ └── websocket.service.test.ts
-│ │ │
-│ │ └── server.ts # 服务器入口
-│ │
-│ ├── 📁 scripts/ # 脚本文件
-│ │ ├── redis-flush.js # Redis 清空脚本
-│ │ └── simulate-ai-analysis.ts # AI 分析模拟脚本
-│ │
-│ ├── 📁 performance/ # 性能测试
-│ │ ├── k6-load-test.js # K6 负载测试
-│ │ └── cache-performance-test.js # 缓存性能测试
-│ │
-│ ├── package.json # 后端依赖
-│ ├── tsconfig.json # TypeScript 配置
-│ ├── .env.example # 环境变量示例
-│ ├── REDIS_INTEGRATION.md # Redis 集成文档
-│ ├── WEBSOCKET_INTEGRATION.md # WebSocket 集成文档
-│ └── AI_ANALYSIS_INTEGRATION.md # AI 分析集成文档
+│   ├── 📁 src/
+│   │   ├── 📁 config/ # 配置文件
+│   │   │   ├── database.ts # 数据库配置
+│   │   │   ├── redis.ts # Redis 配置
+│   │   │   ├── logger.ts # 日志配置
+│   │   │   └── metrics.ts # Prometheus 指标
+│   │   │
+│   │   ├── 📁 types/ # TypeScript 类型定义
+│   │   │   ├── reconciliation.ts # 对账类型
+│   │   │   ├── ticket.ts # 工单类型
+│   │   │   ├── ai-analysis.ts # AI 分析类型
+│   │   │   └── websocket.ts # WebSocket 类型
+│   │   │
+│   │   ├── 📁 services/ # 业务逻辑层
+│   │   │   ├── reconciliation.service.ts # 对账服务
+│   │   │   ├── reconciliation.service.cached.ts # 对账服务（缓存版）
+│   │   │   ├── csv-import.service.ts # CSV 导入服务
+│   │   │   ├── ticket.service.ts # 工单服务
+│   │   │   ├── cache.service.ts # 缓存服务
+│   │   │   ├── redis-pubsub.service.ts # Redis 发布订阅
+│   │   │   ├── websocket.service.ts # WebSocket 服务
+│   │   │   ├── notification.service.ts # 通知服务
+│   │   │   ├── openai.service.ts # OpenAI 服务
+│   │   │   ├── prompt-templates.service.ts # 提示词模板服务
+│   │   │   └── ai-analysis.service.ts # AI 分析服务
+│   │   │
+│   │   ├── 📁 routes/ # API 路由
+│   │   │   ├── reconciliation.routes.ts # 对账路由
+│   │   │   ├── reconciliation.routes.cached.ts # 对账路由（缓存版）
+│   │   │   ├── csv-import.routes.ts # CSV 导入路由
+│   │   │   ├── tickets.routes.ts # 工单路由
+│   │   │   ├── ai-analysis.routes.ts # AI 分析路由
+│   │   │   ├── websocket.routes.ts # WebSocket 路由
+│   │   │   └── health.routes.ts # 健康检查路由
+│   │   │
+│   │   ├── 📁 middleware/ # 中间件
+│   │   │   ├── auth.middleware.ts # 认证中间件
+│   │   │   ├── cache.middleware.ts # 缓存中间件
+│   │   │   ├── validation.middleware.ts # 验证中间件
+│   │   │   ├── rate-limiter.middleware.ts # 限流中间件
+│   │   │   ├── circuit-breaker.middleware.ts # 熔断中间件
+│   │   │   └── error-handler.middleware.ts # 错误处理中间件
+│   │   │
+│   │   ├── 📁 tests/ # 测试文件
+│   │   │   ├── 📁 integration/
+│   │   │   │   ├── reconciliation.integration.test.ts
+│   │   │   │   ├── tickets.integration.test.ts
+│   │   │   │   └── ai-analysis.integration.test.ts
+│   │   │   └── 📁 unit/
+│   │   │       └── services/
+│   │   │           ├── reconciliation.service.test.ts
+│   │   │           ├── ticket.service.test.ts
+│   │   │           ├── cache.service.test.ts
+│   │   │           ├── openai.service.test.ts
+│   │   │           ├── ai-analysis.service.test.ts
+│   │   │           └── websocket.service.test.ts
+│   │   │
+│   │   └── server.ts # 服务器入口
+│   │
+│   ├── 📁 scripts/ # 脚本文件
+│   │   ├── redis-flush.js # Redis 清空脚本
+│   │   └── simulate-ai-analysis.ts # AI 分析模拟脚本
+│   │
+│   ├── 📁 performance/ # 性能测试
+│   │   ├── k6-load-test.js # K6 负载测试
+│   │   └── cache-performance-test.js # 缓存性能测试
+│   │
+│   ├── package.json # 后端依赖
+│   ├── tsconfig.json # TypeScript 配置
+│   ├── .env.example # 环境变量示例
+│   ├── REDIS_INTEGRATION.md # Redis 集成文档
+│   ├── WEBSOCKET_INTEGRATION.md # WebSocket 集成文档
+│   └── AI_ANALYSIS_INTEGRATION.md # AI 分析集成文档
 │
 ├── 📁 components/ # React 组件
-│ ├── 📁 ui/ # shadcn/ui 基础组件
-│ │ ├── button.tsx
-│ │ ├── card.tsx
-│ │ ├── input.tsx
-│ │ ├── dialog.tsx
-│ │ ├── dropdown-menu.tsx
-│ │ ├── table.tsx
-│ │ ├── tabs.tsx
-│ │ ├── badge.tsx
-│ │ ├── avatar.tsx
-│ │ ├── checkbox.tsx
-│ │ ├── select.tsx
-│ │ ├── slider.tsx
-│ │ ├── switch.tsx
-│ │ ├── progress.tsx
-│ │ ├── separator.tsx
-│ │ ├── label.tsx
-│ │ ├── textarea.tsx
-│ │ ├── scroll-area.tsx
-│ │ ├── sheet.tsx
-│ │ └── collapsible.tsx
-│ │
-│ ├── 📁 finance/ # 财务模块组件
-│ │ ├── financial-reconciliation.tsx
-│ │ ├── financial-reconciliation-enhanced.tsx
-│ │ ├── csv-import.tsx
-│ │ └── ai-analysis-display.tsx
-│ │
-│ ├── 📁 support/ # 工单模块组件
-│ │ └── ticket-system.tsx
-│ │
-│ ├── 📁 notifications/ # 通知模块组件
-│ │ └── websocket-notifications.tsx
+│   ├── 📁 ui/ # shadcn/ui 基础组件
+│   │   ├── button.tsx
+│   │   ├── card.tsx
+│   │   ├── input.tsx
+│   │   ├── dialog.tsx
+│   │   ├── dropdown-menu.tsx
+│   │   ├── table.tsx
+│   │   ├── tabs.tsx
+│   │   ├── badge.tsx
+│   │   ├── avatar.tsx
+│   │   ├── checkbox.tsx
+│   │   ├── select.tsx
+│   │   ├── slider.tsx
+│   │   ├── switch.tsx
+│   │   ├── progress.tsx
+│   │   ├── separator.tsx
+│   │   ├── label.tsx
+│   │   ├── textarea.tsx
+│   │   ├── scroll-area.tsx
+│   │   ├── sheet.tsx
+│   │   └── collapsible.tsx
+│   │
+│   ├── 📁 finance/ # 财务模块组件
+│   │   ├── financial-reconciliation.tsx
+│   │   ├── financial-reconciliation-enhanced.tsx
+│   │   ├── csv-import.tsx
+│   │   └── ai-analysis-display.tsx
+│   │
+│   ├── 📁 support/ # 工单模块组件
+│   │   └── ticket-system.tsx
+│   │
+│   ├── 📁 notifications/ # 通知模块组件
+│   │   └── websocket-notifications.tsx
 │ │
 │ ├── 📁 data-analysis/ # 数据分析组件
 │ │ ├── data-overview.tsx
@@ -518,7 +518,7 @@ yanyu-cloud3/
 ├── API 接口：50+
 ├── 测试用例：80+
 └── 文档页面：20+
-\`\`\`
+```
 
 ---
 
@@ -534,81 +534,62 @@ yanyu-cloud3/
 
 ### 安装步骤
 
-\`\`\`bash
-
-## 1. 克隆仓库
-
-git clone <https://github.com/YY-Nexus/YYC-AI-management.git>
+```bash
+# 1. 克隆仓库
+git clone https://github.com/YY-Nexus/YYC-AI-management.git
 cd YYC-AI-management
 
-## 2. 安装前端依赖
-
+# 2. 安装前端依赖
 npm install
 
-## 3. 安装后端依赖
-
+# 3. 安装后端依赖
 cd backend
 npm install
 cd ..
 
-## 4. 配置环境变量
-
+# 4. 配置环境变量
 cp .env.example .env
 cp backend/.env.example backend/.env
 
-## 编辑 .env 文件，填入必要的配置
-
+# 编辑 .env 文件，填入必要的配置
 nano .env
 nano backend/.env
 
-## 5. 启动数据库（使用 Docker）
-
+# 5. 启动数据库（使用 Docker）
 docker-compose -f scripts/docker-compose.dev.yml up -d postgres redis
 
-## 6. 运行数据库迁移
-
+# 6. 运行数据库迁移
 cd backend
 npm run migrate
 npm run seed
 cd ..
 
-## 7. 启动后端服务
-
+# 7. 启动后端服务
 cd backend
 npm run dev
+# 后端运行在 http://localhost:3001
 
-## 后端运行在 <http://localhost:3001>
-
-## 8. 启动前端服务（新终端）
-
+# 8. 启动前端服务（新终端）
 npm run dev
+# 前端运行在 http://localhost:3000
 
-## 前端运行在 <http://localhost:3000>
-
-## 9. 启动 Storybook（可选）
-
+# 9. 启动 Storybook（可选）
 npm run storybook
-
-## Storybook 运行在 <http://localhost:6006>
-
-\`\`\`
+# Storybook 运行在 http://localhost:6006
+```
 
 ## Docker 快速启动
 
-\`\`\`bash
-
-## 启动所有服务
-
+```bash
+# 启动所有服务
 docker-compose -f scripts/docker-compose.dev.yml up -d
 
-## 查看日志
-
+# 查看日志
 docker-compose -f scripts/docker-compose.dev.yml logs -f
 
-## 停止服务
-
+# 停止服务
 docker-compose -f scripts/docker-compose.dev.yml down
-\`\`\`
+```
 
 ---
 
@@ -616,32 +597,25 @@ docker-compose -f scripts/docker-compose.dev.yml down
 
 ### 前端环境变量 (.env)
 
-\`\`\`bash
+```bash
+# API 基础 URL
+NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
 
-## API 基础 URL
-
-NEXT_PUBLIC_API_BASE_URL=<http://localhost:3001>
-
-## 环境标识
-
+# 环境标识
 NEXT_PUBLIC_ENV=development
 
-## WebSocket URL（可选，默认使用 API_BASE_URL）
-
+# WebSocket URL（可选，默认使用 API_BASE_URL）
 NEXT_PUBLIC_WS_URL=ws://localhost:3001
-\`\`\`
+```
 
-## 后端环境变量 (backend/.env)
+### 后端环境变量 (backend/.env)
 
-\`\`\`bash
-
-## 服务器配置
-
+```bash
+# 服务器配置
 PORT=3001
 NODE_ENV=development
 
-## 数据库配置
-
+# 数据库配置
 DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=yanyu_cloud
@@ -652,71 +626,59 @@ DB_POOL_MIN=5
 DB_IDLE_TIMEOUT=30000
 DB_CONNECT_TIMEOUT=10000
 
-## Redis 配置
-
+# Redis 配置
 REDIS_HOST=localhost
 REDIS_PORT=6379
 REDIS_PASSWORD=
 REDIS_DB=0
 REDIS_KEY_PREFIX=yyc3:
 
-## JWT 配置
-
+# JWT 配置
 JWT_SECRET=your_jwt_secret_key_min_32_characters
 JWT_EXPIRES_IN=24h
 
-## OpenAI 配置
-
+# OpenAI 配置
 OPENAI_API_KEY=sk-your-openai-api-key
 OPENAI_MODEL=gpt-4o
 OPENAI_ORGANIZATION=org-your-organization-id
 
-## WebSocket 配置
-
+# WebSocket 配置
 WS_ENABLED=true
 WS_HEARTBEAT_INTERVAL=30000
 WS_CLIENT_TIMEOUT=60000
 WS_RECONNECT_INTERVAL=5000
 
-## 日志配置
-
+# 日志配置
 LOG_LEVEL=info
 
-## 监控配置
-
+# 监控配置
 PROMETHEUS_ENABLED=true
 
-## 前端 URL
+# 前端 URL
+FRONTEND_BASE_URL=http://localhost:3000
 
-FRONTEND_BASE_URL=<http://localhost:3000>
-
-## 文件上传配置
-
+# 文件上传配置
 UPLOAD_MAX_SIZE_MB=10
 UPLOAD_PROVIDER=local
 UPLOAD_BUCKET=uploads
 
-## CSV 导入配置
-
+# CSV 导入配置
 CSV_IMPORT_MAX_ROWS=10000
 CSV_MATCH_TOLERANCE=0.01
 
-## 工单配置
-
+# 工单配置
 TICKET_SLA_THRESHOLDS=24,48,72
 TICKET_STATUS_FLOW=new,in_progress,resolved,closed
 TICKET_MESSAGE_MAX_LENGTH=2000
 
-## 审批配置
-
+# 审批配置
 APPROVAL_FLOW_STEPS=submit,review,approve,complete
 APPROVAL_TIMEOUT_HOURS=72
 
-## 对账配置
-
+# 对账配置
 RECONCILIATION_EXPORT_FORMAT=csv,excel,pdf
 
-## RBAC 配置
+# RBAC 配置
 
 RBAC_ENABLED=true
 
