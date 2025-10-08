@@ -75,10 +75,5 @@
     "yarn.lock",
     "cspell.json"
   ],
-  "enabledLanguageIds": [
-    "markdown",
-    "typescript",
-    "javascript",
-    "yaml"
-  ]
+  "enabledLanguageIds": ["markdown", "typescript", "javascript", "yaml"]
 }

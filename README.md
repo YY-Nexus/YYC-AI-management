@@ -607,7 +607,7 @@ NEXT_PUBLIC_WS_URL=ws://localhost:3001
 
 ### 后端环境变量 (backend/.env)
 
-```bash
+````bash
 # 服务器配置
 PORT=3001
 NODE_ENV=development
@@ -776,7 +776,7 @@ CREATE INDEX idx_exception_status ON reconciliation_exceptions(resolution_status
 CREATE INDEX idx_ticket_status ON tickets(status);
 CREATE INDEX idx_ticket_assigned ON tickets(assigned_to);
 CREATE INDEX idx_ticket_created ON tickets(created_at);
-```
+````
 
 ---
 
@@ -818,27 +818,27 @@ GET /api/reconciliation/records
 
 ```json
 {
-"success": true,
-"data": [
-{
-"id": "uuid",
-"recordNumber": "REC-20240106-001",
-"transactionDate": "2024-01-06",
-"transactionType": "payment",
-"amount": 1000.00,
-"currency": "CNY",
-"description": "产品采购款",
-"status": "matched",
-"customerName": "上海某公司",
-"createdAt": "2024-01-06T08:00:00Z"
-}
-],
-"pagination": {
-"total": 100,
-"limit": 50,
-"offset": 0,
-"hasMore": true
-}
+  "success": true,
+  "data": [
+    {
+      "id": "uuid",
+      "recordNumber": "REC-20240106-001",
+      "transactionDate": "2024-01-06",
+      "transactionType": "payment",
+      "amount": 1000.0,
+      "currency": "CNY",
+      "description": "产品采购款",
+      "status": "matched",
+      "customerName": "上海某公司",
+      "createdAt": "2024-01-06T08:00:00Z"
+    }
+  ],
+  "pagination": {
+    "total": 100,
+    "limit": 50,
+    "offset": 0,
+    "hasMore": true
+  }
 }
 ```
 
@@ -852,13 +852,13 @@ POST /api/reconciliation/records
 
 ```json
 {
-"transactionDate": "2024-01-06",
-"transactionType": "payment",
-"amount": 1000.00,
-"currency": "CNY",
-"description": "产品采购款",
-"customerName": "上海某公司",
-"category": "procurement"
+  "transactionDate": "2024-01-06",
+  "transactionType": "payment",
+  "amount": 1000.0,
+  "currency": "CNY",
+  "description": "产品采购款",
+  "customerName": "上海某公司",
+  "category": "procurement"
 }
 ```
 
@@ -866,13 +866,13 @@ POST /api/reconciliation/records
 
 ```json
 {
-"success": true,
-"data": {
-"id": "uuid",
-"recordNumber": "REC-20240106-001",
-"status": "unmatched",
-"createdAt": "2024-01-06T08:00:00Z"
-}
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "recordNumber": "REC-20240106-001",
+    "status": "unmatched",
+    "createdAt": "2024-01-06T08:00:00Z"
+  }
 }
 ```
 
@@ -886,13 +886,13 @@ POST /api/reconciliation/auto-reconcile
 
 ```json
 {
-"success": true,
-"data": {
-"totalProcessed": 100,
-"matched": 85,
-"unmatched": 15,
-"executionTime": 2500
-}
+  "success": true,
+  "data": {
+    "totalProcessed": 100,
+    "matched": 85,
+    "unmatched": 15,
+    "executionTime": 2500
+  }
 }
 ```
 
@@ -906,14 +906,14 @@ GET /api/reconciliation/stats
 
 ```json
 {
-"success": true,
-"data": {
-"totalRecords": 1000,
-"matchedAmount": 850000.00,
-"unmatchedAmount": 150000.00,
-"matchRate": 85.5,
-"exceptionCount": 15
-}
+  "success": true,
+  "data": {
+    "totalRecords": 1000,
+    "matchedAmount": 850000.0,
+    "unmatchedAmount": 150000.0,
+    "matchRate": 85.5,
+    "exceptionCount": 15
+  }
 }
 ```
 
@@ -936,16 +936,16 @@ Content-Type: multipart/form-data
 
 ```json
 {
-"success": true,
-"data": {
-"batchId": "uuid",
-"fileName": "transactions.csv",
-"totalRecords": 500,
-"processedRecords": 500,
-"matchedRecords": 450,
-"unmatchedRecords": 50,
-"status": "completed"
-}
+  "success": true,
+  "data": {
+    "batchId": "uuid",
+    "fileName": "transactions.csv",
+    "totalRecords": 500,
+    "processedRecords": 500,
+    "matchedRecords": 450,
+    "unmatchedRecords": 50,
+    "status": "completed"
+  }
 }
 ```
 
@@ -959,18 +959,18 @@ GET /api/csv-import/batches
 
 ```json
 {
-"success": true,
-"data": [
-{
-"id": "uuid",
-"batchNumber": "BATCH-20240106-001",
-"fileName": "transactions.csv",
-"totalRecords": 500,
-"status": "completed",
-"importedBy": "user@example.com",
-"importCompletedAt": "2024-01-06T09:00:00Z"
-}
-]
+  "success": true,
+  "data": [
+    {
+      "id": "uuid",
+      "batchNumber": "BATCH-20240106-001",
+      "fileName": "transactions.csv",
+      "totalRecords": 500,
+      "status": "completed",
+      "importedBy": "user@example.com",
+      "importCompletedAt": "2024-01-06T09:00:00Z"
+    }
+  ]
 }
 ```
 
@@ -986,26 +986,26 @@ POST /api/ai-analysis/analyze/:recordId
 
 ```json
 {
-"success": true,
-"data": {
-"recordId": "uuid",
-"rootCause": "金额不匹配：发票金额为 1000 元，但实际到账 950 元，差额 50 元可能是银行手续费",
-"confidence": 0.92,
-"recommendations": [
-"联系银行确认手续费金额",
-"与客户核对发票金额",
-"更新系统中的手续费规则"
-],
-"suggestedActions": [
-{
-"action": "联系银行",
-"priority": "high",
-"estimatedImpact": "可解决 90% 的类似问题"
-}
-],
-"analysisTimestamp": "2024-01-06T10:00:00Z",
-"modelVersion": "gpt-4o"
-}
+  "success": true,
+  "data": {
+    "recordId": "uuid",
+    "rootCause": "金额不匹配：发票金额为 1000 元，但实际到账 950 元，差额 50 元可能是银行手续费",
+    "confidence": 0.92,
+    "recommendations": [
+      "联系银行确认手续费金额",
+      "与客户核对发票金额",
+      "更新系统中的手续费规则"
+    ],
+    "suggestedActions": [
+      {
+        "action": "联系银行",
+        "priority": "high",
+        "estimatedImpact": "可解决 90% 的类似问题"
+      }
+    ],
+    "analysisTimestamp": "2024-01-06T10:00:00Z",
+    "modelVersion": "gpt-4o"
+  }
 }
 ```
 
@@ -1019,7 +1019,7 @@ POST /api/ai-analysis/analyze-batch
 
 ```json
 {
-"recordIds": ["uuid1", "uuid2", "uuid3"]
+  "recordIds": ["uuid1", "uuid2", "uuid3"]
 }
 ```
 
@@ -1027,19 +1027,19 @@ POST /api/ai-analysis/analyze-batch
 
 ```json
 {
-"success": true,
-"data": {
-"total": 3,
-"successful": 3,
-"failed": 0,
-"results": [
-{
-"recordId": "uuid1",
-"rootCause": "...",
-"confidence": 0.92
-}
-]
-}
+  "success": true,
+  "data": {
+    "total": 3,
+    "successful": 3,
+    "failed": 0,
+    "results": [
+      {
+        "recordId": "uuid1",
+        "rootCause": "...",
+        "confidence": 0.92
+      }
+    ]
+  }
 }
 ```
 
@@ -1053,8 +1053,8 @@ POST /api/ai-analysis/analyze-trends
 
 ```json
 {
-"startDate": "2024-01-01",
-"endDate": "2024-01-31"
+  "startDate": "2024-01-01",
+  "endDate": "2024-01-31"
 }
 ```
 
@@ -1062,22 +1062,19 @@ POST /api/ai-analysis/analyze-trends
 
 ```json
 {
-"success": true,
-"data": {
-"period": "2024-01-01 to 2024-01-31",
-"totalExceptions": 150,
-"commonPatterns": [
-{
-"pattern": "银行手续费差异",
-"frequency": 45,
-"percentage": 30
-}
-],
-"recommendations": [
-"建立标准化的手续费规则",
-"与银行协商固定手续费标准"
-]
-}
+  "success": true,
+  "data": {
+    "period": "2024-01-01 to 2024-01-31",
+    "totalExceptions": 150,
+    "commonPatterns": [
+      {
+        "pattern": "银行手续费差异",
+        "frequency": 45,
+        "percentage": 30
+      }
+    ],
+    "recommendations": ["建立标准化的手续费规则", "与银行协商固定手续费标准"]
+  }
 }
 ```
 
@@ -1103,19 +1100,19 @@ GET /api/tickets
 
 ```json
 {
-"success": true,
-"data": [
-{
-"id": "uuid",
-"ticketNumber": "TKT-20240106-001",
-"title": "系统登录异常",
-"status": "in_progress",
-"priority": "high",
-"createdBy": "user@example.com",
-"assignedTo": "support@example.com",
-"createdAt": "2024-01-06T08:00:00Z"
-}
-]
+  "success": true,
+  "data": [
+    {
+      "id": "uuid",
+      "ticketNumber": "TKT-20240106-001",
+      "title": "系统登录异常",
+      "status": "in_progress",
+      "priority": "high",
+      "createdBy": "user@example.com",
+      "assignedTo": "support@example.com",
+      "createdAt": "2024-01-06T08:00:00Z"
+    }
+  ]
 }
 ```
 
@@ -1129,10 +1126,10 @@ POST /api/tickets
 
 ```json
 {
-"title": "系统登录异常",
-"description": "用户反馈无法登录系统",
-"category": "technical",
-"priority": "high"
+  "title": "系统登录异常",
+  "description": "用户反馈无法登录系统",
+  "category": "technical",
+  "priority": "high"
 }
 ```
 
@@ -1146,8 +1143,8 @@ POST /api/tickets/:id/messages
 
 ```json
 {
-"content": "问题已定位，正在修复中",
-"isInternal": false
+  "content": "问题已定位，正在修复中",
+  "isInternal": false
 }
 ```
 
@@ -1156,10 +1153,10 @@ POST /api/tickets/:id/messages
 #### 5.1 连接 WebSocket
 
 ```javascript
-const socket = io('<http://localhost:3001>', {
-auth: {
-token: 'your_jwt_token'
-}
+const socket = io("<http://localhost:3001>", {
+  auth: {
+    token: "your_jwt_token",
+  },
 });
 ```
 
@@ -1167,23 +1164,23 @@ token: 'your_jwt_token'
 
 ```javascript
 // 连接成功
-socket.on('connect', () => {
-console.log('Connected to server');
+socket.on("connect", () => {
+  console.log("Connected to server");
 });
 
 // 接收通知
-socket.on('notification', (data) => {
-console.log('New notification:', data);
+socket.on("notification", (data) => {
+  console.log("New notification:", data);
 });
 
 // 工单更新
-socket.on('ticket:update', (data) => {
-console.log('Ticket updated:', data);
+socket.on("ticket:update", (data) => {
+  console.log("Ticket updated:", data);
 });
 
 // 对账更新
-socket.on('reconciliation:update', (data) => {
-console.log('Reconciliation updated:', data);
+socket.on("reconciliation:update", (data) => {
+  console.log("Reconciliation updated:", data);
 });
 ```
 
@@ -1191,10 +1188,10 @@ console.log('Reconciliation updated:', data);
 
 ```javascript
 // 加入房间
-socket.emit('join:room', { room: 'reconciliation' });
+socket.emit("join:room", { room: "reconciliation" });
 
 // 心跳
-socket.emit('ping');
+socket.emit("ping");
 ```
 
 ### 6. 健康检查 API
@@ -1209,14 +1206,14 @@ GET /api/health
 
 ```json
 {
-"status": "healthy",
-"timestamp": "2024-01-06T10:00:00Z",
-"uptime": 86400,
-"services": {
-"database": "healthy",
-"redis": "healthy",
-"websocket": "healthy"
-}
+  "status": "healthy",
+  "timestamp": "2024-01-06T10:00:00Z",
+  "uptime": 86400,
+  "services": {
+    "database": "healthy",
+    "redis": "healthy",
+    "websocket": "healthy"
+  }
 }
 ```
 
@@ -1236,17 +1233,17 @@ GET /api/health/websocket
 
 ```json
 {
-"success": false,
-"error": {
-"code": "VALIDATION_ERROR",
-"message": "Invalid input data",
-"details": [
-{
-"field": "email",
-"message": "Invalid email format"
-}
-]
-}
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid input data",
+    "details": [
+      {
+        "field": "email",
+        "message": "Invalid email format"
+      }
+    ]
+  }
 }
 ```
 
@@ -1703,7 +1700,7 @@ docker-compose logs backend > backend.log
 
 **告警规则示例（Prometheus）：**
 
-```yaml
+````yaml
 groups:
 
 - name: yanyu_cloud3_alerts
@@ -1748,7 +1745,7 @@ node backend/scripts/redis-flush.js
 # 方式二：使用 Redis CLI
 
 redis-cli FLUSHDB
-```
+````
 
 ### Q2: 如何处理数据库迁移失败？
 
@@ -1783,16 +1780,16 @@ npm run migrate:fresh
 
 ```javascript
 // 调试 WebSocket 连接
-const socket = io('<http://localhost:3001>', {
-auth: { token: 'your_token' },
-transports: ['websocket', 'polling'],
-reconnection: true,
-reconnectionDelay: 1000,
-reconnectionAttempts: 5
+const socket = io("<http://localhost:3001>", {
+  auth: { token: "your_token" },
+  transports: ["websocket", "polling"],
+  reconnection: true,
+  reconnectionDelay: 1000,
+  reconnectionAttempts: 5,
 });
 
-socket.on('connect_error', (error) => {
-console.error('Connection error:', error);
+socket.on("connect_error", (error) => {
+  console.error("Connection error:", error);
 });
 ```
 
@@ -1820,16 +1817,19 @@ curl -X GET <http://localhost:3001/api/ai-analysis/health> \
 **性能优化建议：**
 
 1. **数据库优化**
+
    - 添加适当的索引
    - 使用连接池
    - 定期执行 VACUUM
 
 2. **缓存优化**
+
    - 提高缓存命中率
    - 合理设置 TTL
    - 使用缓存预热
 
 3. **前端优化**
+
    - 启用代码分割
    - 使用图片懒加载
    - 压缩静态资源
@@ -1932,20 +1932,20 @@ docker exec -it postgres-container psql -U postgres
 ```typescript
 // 使用接口定义类型
 interface User {
-id: string;
-name: string;
-email: string;
+  id: string;
+  name: string;
+  email: string;
 }
 
 // 使用 async/await 处理异步
 async function getUser(id: string): Promise<User> {
-const user = await db.users.findById(id);
-return user;
+  const user = await db.users.findById(id);
+  return user;
 }
 
 // 使用解构和默认参数
 function createUser({ name, email }: Partial<User> = {}) {
-// ...
+  // ...
 }
 ```
 
