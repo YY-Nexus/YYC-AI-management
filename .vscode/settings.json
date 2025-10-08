@@ -1,0 +1,94 @@
+{{
+
+  "cSpell.words": [  "cSpell.words": [
+
+    "shadcn",    "shadcn",
+
+    "wechat",     "wechat",
+
+    "VARCHAR",    "VARCHAR",
+
+    "FLUSHDB",    "FLUSHDB",
+
+    "BGSAVE",    "BGSAVE",
+
+    "yanyu",    "yanyu",
+
+    "dingtalk"    "postgres",
+
+  ]    "redis",
+
+}    "nextjs",
+    "tailwindcss",
+    "typescript",
+    "websocket",
+    "postgresql",
+    "openai",
+    "kubernetes",
+    "grafana",
+    "prometheus",
+    "nginx",
+    "docker",
+    "gitlab",
+    "github",
+    "pnpm",
+    "vitest",
+    "storybook",
+    "eslint",
+    "tsup",
+    "postcss",
+    "middleware",
+    "backend",
+    "frontend",
+    "api",
+    "jwt",
+    "rbac",
+    "oauth",
+    "cors",
+    "csrf",
+    "ssl",
+    "tls",
+    "http",
+    "https",
+    "tcp",
+    "udp",
+    "json",
+    "xml",
+    "yaml",
+    "yml",
+    "env",
+    "config",
+    "dockerfile",
+    "gitignore",
+    "tsconfig",
+    "packagejson",
+    "lockfile",
+    "nodemodules",
+    "dist",
+    "build",
+    "src",
+    "dev",
+    "prod",
+    "staging",
+    "localhost"
+  ],
+  "cSpell.enabledFileTypes": [
+    "markdown",
+    "typescript",
+    "javascript",
+    "json",
+    "yaml",
+    "dockerfiles"
+  ],
+  "cSpell.ignorePaths": [
+    "node_modules",
+    "dist",
+    "build",
+    ".git",
+    "*.min.js",
+    "*.min.css",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "yarn.lock"
+  ]
+}
