@@ -1,0 +1,885 @@
+// 继续完善 DocumentAnalysisService 实现
+
+export class DocumentAnalysisService extends BaseAIService {
+  // 从文档提取结构化信息 - 增强版本
+  async extractInformation(
+    documentText: string, 
+    schema: Record<string, string>,
+    options: {
+      validate?: boolean;
+      requiredFields?: string[];
+      confidenceThreshold?: number;
+      maxDocumentLength?: number;
+    } = {}
+  ): Promise<{
+    success: boolean;
+    data: Record<string, any>;
+    confidence: number;
+    missingFields: string[];
+    warnings: string[];
+    processedAt: string;
+  }> {
+    const { 
+      validate = true, 
+      requiredFields = [], 
+      confidenceThreshold = 0.7,
+      maxDocumentLength = 8000
+    } = options;
+    
+    const schemaStr = Object.entries(schema)
+      .map(([key, desc]) => `- ${key}: ${desc}`)
+      .join('\n');
+    
+    const requiredStr = requiredFields.length > 0 
+      ? `\n\n必须包含字段: ${requiredFields.join(', ')}`
+      : '';
+    
+    const isTruncated = documentText.length > maxDocumentLength;
+    const processedText = documentText.substring(0, maxDocumentLength);
+    
+    const prompt = `
+请从以下文档内容中提取结构化信息。严格按照指定的字段和格式要求执行。
+
+文档内容${isTruncated ? '（已截断）' : ''}:
+${processedText}${isTruncated ? '\n\n[文档内容已截断，仅分析前部分内容]' : ''}
+
+提取字段定义:
+${schemaStr}
+${requiredStr}
+
+提取要求:
+1. 只提取明确出现在文档中的信息
+2. 对于不确定的信息，标记为null或空字符串
+3. 保持数据格式的一致性
+4. 不要推断或创造文档中不存在的信息
+5. 对于数字和日期，尽量保持原始格式
+
+请返回JSON格式，包含以下字段:
+- extracted: 包含所有提取字段的对象
+- confidence: 整体提取置信度 (0-1)
+- notes: 任何处理说明或警告
+
+示例:
+{
+  "extracted": {
+    "field1": "value1",
+    "field2": null
+  },
+  "confidence": 0.85,
+  "notes": ["字段X未找到", "字段Y格式需要验证"]
+}
+`;
+
+    try {
+      return await this.withRetry(async () => {
+        const response = await this.openai.chat.completions.create({
+          model: this.defaultModel,
+          messages: [
+            {
+              role: 'system',
+              content: '你是一个精准的信息提取助手。严格基于文档内容提取信息，不进行推断或创造。对于不确定的信息，请明确标记。返回格式必须为有效的JSON。'
+            },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.1,
+          max_tokens: 3000,
+          response_format: { type: 'json_object' },
+        });
+        
+        // 记录token使用
+        if (response.usage) {
+          this.trackTokenUsage(this.defaultModel, response.usage, {
+            analysisType: 'document_extraction',
+            documentLength: documentText.length,
+            fieldCount: Object.keys(schema).length,
+            isTruncated,
+          });
+        }
+        
+        // 解析响应
+        const content = response.choices[0]?.message?.content || '{}';
+        try {
+          const parsedResponse = JSON.parse(content);
+          const extractedData = parsedResponse.extracted || {};
+          const confidence = parsedResponse.confidence || 0.5;
+          const notes = parsedResponse.notes || [];
+          
+          // 验证必需字段
+          const missingFields = requiredFields.filter(
+            field => !extractedData[field] || extractedData[field] === ''
+          );
+          
+          // 构建结果
+          const result = {
+            success: missingFields.length === 0 && confidence >= confidenceThreshold,
+            data: extractedData,
+            confidence,
+            missingFields,
+            warnings: notes,
+            processedAt: new Date().toISOString(),
+          };
+          
+          logger.info('Document extraction completed', {
+            success: result.success,
+            confidence,
+            extractedFields: Object.keys(extractedData).length,
+            missingFields: missingFields.length,
+            documentLength: documentText.length,
+            isTruncated,
+          });
+          
+          return result;
+        } catch (error) {
+          logger.error('Failed to parse document extraction response', { 
+            content,
+            error: error.message 
+          });
+          
+          return {
+            success: false,
+            data: {},
+            confidence: 0,
+            missingFields: Object.keys(schema),
+            warnings: ['响应解析失败: ' + error.message],
+            processedAt: new Date().toISOString(),
+          };
+        }
+      });
+    } catch (error) {
+      logger.error('Document extraction failed', { error });
+      throw new AppError('文档信息提取失败', 500, ErrorCode.AI_PROCESSING_ERROR);
+    }
+  }
+  
+  // 文档相似度比较 - 增强版本
+  async compareDocuments(
+    docA: string, 
+    docB: string,
+    options: {
+      maxLengthPerDoc?: number;
+      aspects?: string[];
+      detailedAnalysis?: boolean;
+    } = {}
+  ): Promise<{
+    similarityScore: number;
+    differences: string[];
+    aspects?: Record<string, { similarity: number; details: string }>;
+    summary: string;
+  }> {
+    const { 
+      maxLengthPerDoc = 4000, 
+      aspects = ['主题', '结构', '关键信息', '风格'],
+      detailedAnalysis = false
+    } = options;
+    
+    const isTruncatedA = docA.length > maxLengthPerDoc;
+    const isTruncatedB = docB.length > maxLengthPerDoc;
+    
+    const aspectStr = aspects.map(aspect => `- ${aspect}`).join('\n');
+    const detailedAnalysisStr = detailedAnalysis ? 
+      `\n\n同时分析以下方面的相似度:\n${aspectStr}` : '';
+    
+    const prompt = `
+分析以下两个文档的相似度，计算百分比相似度分数（0-100），并列出主要差异。
+
+文档A${isTruncatedA ? '（已截断）' : ''}:
+${docA.substring(0, maxLengthPerDoc)}${isTruncatedA ? '\n\n[文档A内容已截断]' : ''}
+
+文档B${isTruncatedB ? '（已截断）' : ''}:
+${docB.substring(0, maxLengthPerDoc)}${isTruncatedB ? '\n\n[文档B内容已截断]' : ''}
+${detailedAnalysisStr}
+
+请返回JSON格式:
+{
+  "similarityScore": 相似度百分比（0-100之间的数值）,
+  "differences": [主要差异点的数组],
+  ${detailedAnalysis ? `"aspects": {
+    "主题": { "similarity": 相似度分数, "details": "详细说明" },
+    ...
+  },` : ''}
+  "summary": "相似度分析摘要"
+}
+`;
+
+    try {
+      return await this.withRetry(async () => {
+        const response = await this.openai.chat.completions.create({
+          model: this.defaultModel,
+          messages: [
+            {
+              role: 'system',
+              content: '你是一个专业的文档分析专家。请准确评估文档相似度，提供具体的差异分析。'
+            },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.1,
+          max_tokens: 2000,
+          response_format: { type: 'json_object' },
+        });
+        
+        // 记录token使用
+        if (response.usage) {
+          this.trackTokenUsage(this.defaultModel, response.usage, {
+            analysisType: 'document_comparison',
+            docALength: docA.length,
+            docBLength: docB.length,
+            detailedAnalysis,
+          });
+        }
+        
+        // 解析响应
+        const content = response.choices[0]?.message?.content || '{}';
+        try {
+          const result = JSON.parse(content);
+          
+          // 验证和标准化结果
+          const similarityScore = Math.max(0, Math.min(100, Number(result.similarityScore) || 0));
+          const differences = Array.isArray(result.differences) ? result.differences : [];
+          const summary = result.summary || '文档相似度分析完成';
+          
+          const finalResult: any = {
+            similarityScore,
+            differences,
+            summary,
+          };
+          
+          if (detailedAnalysis && result.aspects) {
+            finalResult.aspects = result.aspects;
+          }
+          
+          logger.info('Document comparison completed', {
+            similarityScore,
+            differenceCount: differences.length,
+            docALength: docA.length,
+            docBLength: docB.length,
+          });
+          
+          return finalResult;
+        } catch (error) {
+          logger.error('Failed to parse document comparison response', { 
+            content,
+            error: error.message 
+          });
+          
+          return {
+            similarityScore: 0,
+            differences: ['解析响应时出错'],
+            summary: '分析失败',
+          };
+        }
+      });
+    } catch (error) {
+      logger.error('Document comparison failed', { error });
+      throw new AppError('文档比较失败', 500, ErrorCode.AI_PROCESSING_ERROR);
+    }
+  }
+  
+  // 文档摘要生成 - 增强版本
+  async generateSummary(
+    documentText: string,
+    options: {
+      maxLength?: number;
+      style?: 'concise' | 'detailed' | 'bullet' | 'executive';
+      focusAreas?: string[];
+      includeKeyPoints?: boolean;
+    } = {}
+  ): Promise<{
+    summary: string;
+    keyPoints?: string[];
+    length: number;
+    coverage: number; // 文档覆盖率估计
+  }> {
+    const { 
+      maxLength = 200, 
+      style = 'concise',
+      focusAreas = [],
+      includeKeyPoints = true
+    } = options;
+    
+    const styleMap = {
+      concise: '简洁明了',
+      detailed: '详细完整',
+      bullet: '要点形式',
+      executive: '执行摘要风格'
+    };
+    
+    const focusStr = focusAreas.length > 0 
+      ? `\n重点关注: ${focusAreas.join(', ')}`
+      : '';
+    
+    const isTruncated = documentText.length > 8000;
+    const processedText = documentText.substring(0, 8000);
+    
+    const prompt = `
+请为以下文档生成摘要。
+
+生成要求:
+- 摘要风格: ${styleMap[style]}
+- 最大长度: ${maxLength} 字
+- ${includeKeyPoints ? '包含3-5个关键要点' : '仅生成摘要文本'}
+${focusStr}
+
+文档内容${isTruncated ? '（已截断）' : ''}:
+${processedText}${isTruncated ? '\n\n[文档内容已截断]' : ''}
+
+请返回JSON格式:
+{
+  "summary": "摘要内容",
+  ${includeKeyPoints ? `"keyPoints": ["要点1", "要点2", ...],` : ''}
+  "length": 摘要字数,
+  "coverage": 文档内容覆盖率估计(0-1)
+}
+`;
+
+    try {
+      return await this.withRetry(async () => {
+        const response = await this.openai.chat.completions.create({
+          model: this.defaultModel,
+          messages: [
+            {
+              role: 'system',
+              content: '你是一个专业的文档总结专家。请生成准确、有用的摘要，避免遗漏重要信息。'
+            },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.3,
+          max_tokens: maxLength * 3, // 为关键点留出空间
+          response_format: { type: 'json_object' },
+        });
+        
+        // 记录token使用
+        if (response.usage) {
+          this.trackTokenUsage(this.defaultModel, response.usage, {
+            analysisType: 'document_summary',
+            documentLength: documentText.length,
+            style,
+            includeKeyPoints,
+          });
+        }
+        
+        // 解析响应
+        const content = response.choices[0]?.message?.content || '{}';
+        try {
+          const result = JSON.parse(content);
+          
+          const summary = result.summary || '';
+          const keyPoints = includeKeyPoints && Array.isArray(result.keyPoints) ? result.keyPoints : undefined;
+          const length = Number(result.length) || summary.length;
+          const coverage = Math.max(0, Math.min(1, Number(result.coverage) || 0.5));
+          
+          logger.info('Document summary generated', {
+            summaryLength: length,
+            keyPointsCount: keyPoints?.length || 0,
+            coverage,
+            style,
+          });
+          
+          return {
+            summary,
+            keyPoints,
+            length,
+            coverage,
+          };
+        } catch (error) {
+          logger.error('Failed to parse summary response', { 
+            content,
+            error: error.message 
+          });
+          
+          // 降级处理：直接使用文本内容
+          const fallbackSummary = content.length > maxLength 
+            ? content.substring(0, maxLength) + '...' 
+            : content;
+            
+          return {
+            summary: fallbackSummary,
+            length: fallbackSummary.length,
+            coverage: 0.3,
+          };
+        }
+      });
+    } catch (error) {
+      logger.error('Document summary generation failed', { error });
+      throw new AppError('文档摘要生成失败', 500, ErrorCode.AI_PROCESSING_ERROR);
+    }
+  }
+  
+  // 新增：文档分类
+  async classifyDocument(
+    documentText: string,
+    categories: string[]
+  ): Promise<{
+    primaryCategory: string;
+    confidence: number;
+    allCategories: Array<{ category: string; confidence: number; reasoning: string }>;
+  }> {
+    const categoriesStr = categories.map(cat => `- ${cat}`).join('\n');
+    const processedText = documentText.substring(0, 6000);
+    
+    const prompt = `
+请将以下文档分类到最合适的类别中。
+
+可用类别:
+${categoriesStr}
+
+文档内容:
+${processedText}${documentText.length > 6000 ? '\n\n[文档内容已截断]' : ''}
+
+请返回JSON格式:
+{
+  "primaryCategory": "主要类别",
+  "confidence": 置信度(0-1),
+  "allCategories": [
+    {
+      "category": "类别名称",
+      "confidence": 置信度,
+      "reasoning": "分类理由"
+    },
+    ...
+  ]
+}
+`;
+
+    try {
+      return await this.withRetry(async () => {
+        const response = await this.openai.chat.completions.create({
+          model: this.defaultModel,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.1,
+          response_format: { type: 'json_object' },
+        });
+        
+        if (response.usage) {
+          this.trackTokenUsage(this.defaultModel, response.usage, {
+            analysisType: 'document_classification',
+            categoryCount: categories.length,
+          });
+        }
+        
+        const content = response.choices[0]?.message?.content || '{}';
+        try {
+          return JSON.parse(content);
+        } catch (error) {
+          logger.error('Failed to parse classification response', { content, error });
+          return {
+            primaryCategory: categories[0] || '未知',
+            confidence: 0,
+            allCategories: [],
+          };
+        }
+      });
+    } catch (error) {
+      logger.error('Document classification failed', { error });
+      throw new AppError('文档分类失败', 500, ErrorCode.AI_PROCESSING_ERROR);
+    }
+  }
+}
+
+// 5. 智能推荐引擎 (src/services/ai/recommendation.service.ts)
+export interface RecommendationItem {
+  id: string;
+  score: number;
+  reason: string;
+  metadata?: any;
+}
+
+export interface RecommendationContext {
+  userId: string;
+  userPreferences?: Record<string, any>;
+  currentContext?: string;
+  exclusionList?: string[];
+  diversity?: number; // 0-1, 推荐多样性
+}
+
+export class RecommendationService extends BaseAIService {
+  // 基于用户历史数据推荐内容 - 增强版本
+  async getPersonalizedRecommendations(
+    context: RecommendationContext,
+    userHistory: Array<{ itemId: string; interactionType: string; timestamp: string; rating?: number }>,
+    availableItems: Array<{ id: string; metadata: any }>,
+    count: number = 5
+  ): Promise<RecommendationItem[]> {
+    const cacheKey = `recommendations:${context.userId}:${JSON.stringify(context)}:${userHistory.length}`;
+    
+    return this.withCache(cacheKey, async () => {
+      // 优化: 使用智能预过滤
+      const preFilteredItems = this.preFilterItems(availableItems, userHistory, context.exclusionList || []);
+      
+      if (preFilteredItems.length === 0) {
+        logger.warn('No items available after pre-filtering', { userId: context.userId });
+        return [];
+      }
+      
+      const historyText = userHistory
+        .slice(-25) // 只使用最近25条记录
+        .map(h => `- ${h.itemId} (${h.interactionType}${h.rating ? `, 评分: ${h.rating}` : ''}, ${new Date(h.timestamp).toLocaleDateString('zh-CN')})`)
+        .join('\n');
+        
+      const itemsText = preFilteredItems
+        .slice(0, 25) // 限制发送给AI的项数
+        .map(item => `- ${item.id}: ${JSON.stringify(item.metadata)}`)
+        .join('\n');
+      
+      const diversityHint = context.diversity !== undefined ? 
+        `\n注意推荐多样性，多样性系数: ${context.diversity}` : '';
+      
+      const contextHint = context.currentContext ? 
+        `\n当前上下文: ${context.currentContext}` : '';
+      
+      const prompt = `
+基于用户历史行为和偏好，推荐最相关的${count}个项目。
+
+用户ID: ${context.userId}
+${contextHint}
+
+用户历史行为（最近${Math.min(userHistory.length, 25)}条）:
+${historyText}
+
+用户偏好:
+${context.userPreferences ? JSON.stringify(context.userPreferences, null, 2) : '无明确偏好'}
+
+可用项目（已预筛选）:
+${itemsText}
+${diversityHint}
+
+推荐要求:
+1. 为每个推荐项目评分(1-100)，考虑相关性、用户偏好和多样性
+2. 提供具体的推荐理由
+3. 避免推荐用户已经交互过的项目
+4. ${context.exclusionList?.length ? `排除以下项目: ${context.exclusionList.join(', ')}` : ''}
+
+返回JSON格式:
+{
+  "recommendations": [
+    {
+      "id": "项目ID",
+      "score": 推荐评分(1-100),
+      "reason": "具体推荐理由",
+      "metadata": { 可选额外信息 }
+    },
+    ...
+  ]
+}
+`;
+
+      try {
+        return await this.withRetry(async () => {
+          const response = await this.openai.chat.completions.create({
+            model: this.defaultModel,
+            messages: [
+              {
+                role: 'system',
+                content: '你是一个智能推荐系统。基于用户历史和行为模式提供个性化推荐，考虑多样性和新颖性。'
+              },
+              { role: 'user', content: prompt }
+            ],
+            temperature: Math.max(0.1, context.diversity || 0.3), // 多样性影响随机性
+            max_tokens: 2000,
+            response_format: { type: 'json_object' },
+          });
+          
+          // 记录token使用
+          if (response.usage) {
+            this.trackTokenUsage(this.defaultModel, response.usage, {
+              analysisType: 'personalized_recommendations',
+              userId: context.userId,
+              itemCount: preFilteredItems.length,
+              historyCount: userHistory.length,
+            });
+          }
+          
+          // 解析响应
+          const content = response.choices[0]?.message?.content || '{}';
+          try {
+            const result = JSON.parse(content);
+            const recommendations = Array.isArray(result.recommendations) ? result.recommendations : [];
+            
+            // 后处理：排序和限制数量
+            const sortedRecommendations = recommendations
+              .sort((a, b) => b.score - a.score)
+              .slice(0, count);
+            
+            logger.info('Recommendations generated', {
+              userId: context.userId,
+              recommendationCount: sortedRecommendations.length,
+              topScore: sortedRecommendations[0]?.score || 0,
+            });
+            
+            return sortedRecommendations;
+          } catch (error) {
+            logger.error('Failed to parse recommendations response', { 
+              content,
+              error: error.message 
+            });
+            return [];
+          }
+        });
+      } catch (error) {
+        logger.error('Recommendation generation failed', { 
+          userId: context.userId, 
+          error 
+        });
+        throw new AppError('推荐生成失败', 500, ErrorCode.AI_PROCESSING_ERROR);
+      }
+    }, 30 * 60); // 缓存30分钟
+  }
+  
+  // 相似项目查找 - 增强版本
+  async findSimilarItems(
+    itemId: string,
+    itemDetails: any,
+    candidateItems: Array<{ id: string; details: any }>,
+    options: {
+      count?: number;
+      similarityDimensions?: string[];
+      excludeOriginal?: boolean;
+    } = {}
+  ): Promise<RecommendationItem[]> {
+    const { 
+      count = 5, 
+      similarityDimensions = ['内容', '风格', '主题', '复杂度'],
+      excludeOriginal = true 
+    } = options;
+    
+    const cacheKey = `similar_items:${itemId}:${JSON.stringify(candidateItems.map(i => i.id))}`;
+    
+    return this.withCache(cacheKey, async () => {
+      const filteredCandidates = excludeOriginal 
+        ? candidateItems.filter(item => item.id !== itemId)
+        : candidateItems;
+      
+      if (filteredCandidates.length === 0) {
+        return [];
+      }
+      
+      const candidatesText = filteredCandidates
+        .slice(0, 20) // 限制候选项数量
+        .map(item => `- ${item.id}: ${JSON.stringify(item.details)}`)
+        .join('\n');
+      
+      const dimensionsStr = similarityDimensions.map(dim => `- ${dim}`).join('\n');
+      
+      const prompt = `
+为给定项目找出${count}个最相似的项目。
+
+目标项目:
+ID: ${itemId}
+详情: ${JSON.stringify(itemDetails)}
+
+候选项目:
+${candidatesText}
+
+相似度评估维度:
+${dimensionsStr}
+
+要求:
+1. 为每个相似项评分(1-100)，考虑多个维度的综合相似度
+2. 简要说明相似原因，可以引用具体维度
+3. 考虑表面特征和深层特征的相似性
+
+返回JSON格式:
+{
+  "similarItems": [
+    {
+      "id": "项目ID",
+      "score": 相似度评分(1-100),
+      "reason": "相似原因，可说明在哪些维度相似"
+    },
+    ...
+  ]
+}
+`;
+
+      try {
+        return await this.withRetry(async () => {
+          const response = await this.openai.chat.completions.create({
+            model: this.defaultModel,
+            messages: [
+              {
+                role: 'system',
+                content: '你是一个相似度分析专家。请从多个维度评估项目相似性，提供准确的相似度评分和理由。'
+              },
+              { role: 'user', content: prompt }
+            ],
+            temperature: 0.1,
+            max_tokens: 1500,
+            response_format: { type: 'json_object' },
+          });
+          
+          // 记录token使用
+          if (response.usage) {
+            this.trackTokenUsage(this.defaultModel, response.usage, {
+              analysisType: 'similar_items',
+              targetItem: itemId,
+              candidateCount: filteredCandidates.length,
+            });
+          }
+          
+          // 解析响应
+          const content = response.choices[0]?.message?.content || '{}';
+          try {
+            const result = JSON.parse(content);
+            const similarItems = Array.isArray(result.similarItems) ? result.similarItems : [];
+            
+            // 排序和限制数量
+            return similarItems
+              .sort((a, b) => b.score - a.score)
+              .slice(0, count);
+          } catch (error) {
+            logger.error('Failed to parse similar items response', { 
+              content,
+              error: error.message 
+            });
+            return [];
+          }
+        });
+      } catch (error) {
+        logger.error('Similar items search failed', { itemId, error });
+        throw new AppError('相似项目查找失败', 500, ErrorCode.AI_PROCESSING_ERROR);
+      }
+    }, 60 * 60); // 缓存1小时
+  }
+  
+  // 新增：基于内容的推荐（无用户历史）
+  async getContentBasedRecommendations(
+    userProfile: { preferences?: any; demographics?: any },
+    availableItems: Array<{ id: string; metadata: any }>,
+    count: number = 5
+  ): Promise<RecommendationItem[]> {
+    const itemsText = availableItems
+      .slice(0, 20)
+      .map(item => `- ${item.id}: ${JSON.stringify(item.metadata)}`)
+      .join('\n');
+    
+    const prompt = `
+基于用户画像和内容特征，推荐最相关的${count}个项目。
+
+用户画像:
+${JSON.stringify(userProfile, null, 2)}
+
+可用项目:
+${itemsText}
+
+推荐要求:
+1. 基于内容特征与用户画像的匹配度进行推荐
+2. 为每个项目评分(1-100)
+3. 说明推荐理由，重点说明内容特征如何匹配用户画像
+
+返回JSON格式:
+{
+  "recommendations": [
+    {
+      "id": "项目ID",
+      "score": 匹配度评分(1-100),
+      "reason": "推荐理由"
+    },
+    ...
+  ]
+}
+`;
+
+    try {
+      return await this.withRetry(async () => {
+        const response = await this.openai.chat.completions.create({
+          model: this.defaultModel,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.2,
+          response_format: { type: 'json_object' },
+        });
+        
+        if (response.usage) {
+          this.trackTokenUsage(this.defaultModel, response.usage, {
+            analysisType: 'content_based_recommendations',
+            itemCount: availableItems.length,
+          });
+        }
+        
+        const content = response.choices[0]?.message?.content || '{}';
+        try {
+          const result = JSON.parse(content);
+          return Array.isArray(result.recommendations) 
+            ? result.recommendations.slice(0, count) 
+            : [];
+        } catch (error) {
+          logger.error('Failed to parse content-based recommendations', { content, error });
+          return [];
+        }
+      });
+    } catch (error) {
+      logger.error('Content-based recommendations failed', { error });
+      throw new AppError('基于内容的推荐失败', 500, ErrorCode.AI_PROCESSING_ERROR);
+    }
+  }
+  
+  // 辅助方法：智能预过滤
+  private preFilterItems(
+    availableItems: Array<{ id: string; metadata: any }>,
+    userHistory: Array<{ itemId: string; interactionType: string }>,
+    exclusionList: string[]
+  ): Array<{ id: string; metadata: any }> {
+    // 简单的预过滤逻辑
+    const interactedIds = new Set(userHistory.map(h => h.itemId));
+    const excludedIds = new Set(exclusionList);
+    
+    return availableItems.filter(item => {
+      // 排除已交互和明确排除的项目
+      if (interactedIds.has(item.id) || excludedIds.has(item.id)) {
+        return false;
+      }
+      
+      // 可以在这里添加更多预过滤逻辑
+      // 比如基于简单的内容匹配、流行度等
+      
+      return true;
+    });
+  }
+}
+
+// 6. 服务导出和初始化
+export class AIServiceManager {
+  private static instance: AIServiceManager;
+  private services: Map<string, any> = new Map();
+  
+  static getInstance(): AIServiceManager {
+    if (!AIServiceManager.instance) {
+      AIServiceManager.instance = new AIServiceManager();
+    }
+    return AIServiceManager.instance;
+  }
+  
+  initialize(): void {
+    // 初始化所有服务
+    this.services.set('document', new DocumentAnalysisService());
+    this.services.set('recommendation', new RecommendationService());
+    this.services.set('behavior', new UserBehaviorAnalysisService());
+    
+    // 初始化队列服务
+    AIQueueService.initialize();
+    
+    logger.info('AI services initialized successfully');
+  }
+  
+  getService<T>(name: string): T {
+    const service = this.services.get(name);
+    if (!service) {
+      throw new Error(`AI service not found: ${name}`);
+    }
+    return service;
+  }
+  
+  async shutdown(): Promise<void> {
+    await AIQueueService.close();
+    logger.info('AI services shutdown completed');
+  }
+}
+
+// 导出所有服务
+export {
+  BaseAIService,
+  DocumentAnalysisService,
+  RecommendationService,
+  UserBehaviorAnalysisService,
+  AIQueueService,
+};
+
+export default AIServiceManager;

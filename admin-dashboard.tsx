@@ -1,6 +1,6 @@
-"use client"
+"use client";
 
-import { useState } from "react"
+import { useState } from "react";
 import {
   Users,
   FileText,
@@ -29,18 +29,19 @@ import {
   Package,
   UserCheck,
   Wrench,
+  GitBranch,
+  ClipboardList,
+  CheckCircle,
+  BarChart,
   Sliders,
   Lock,
   Home,
   Target,
   Calendar,
-  ClipboardList,
-  GitBranch,
   Zap,
   Rocket,
   UserPlus,
   UserCog,
-  BarChart,
   LineChart,
   Monitor,
   AlertTriangle,
@@ -58,11 +59,11 @@ import {
   Edit,
   Camera,
   MapPin,
-} from "lucide-react"
+} from "lucide-react";
 
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -70,11 +71,21 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+} from "@/components/ui/dropdown-menu";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 const menuItems = [
   {
@@ -135,6 +146,18 @@ const menuItems = [
     ],
   },
   {
+    title: "工作流管理",
+    icon: GitBranch,
+    children: [
+      { title: "工作流概览", icon: BarChart3, href: "/workflow/overview" },
+      { title: "流程设计", icon: GitBranch, href: "/workflow/designer" },
+      { title: "我的任务", icon: ClipboardList, href: "/workflow/tasks" },
+      { title: "审批中心", icon: CheckCircle, href: "/workflow/approval" },
+      { title: "流程实例", icon: Activity, href: "/workflow/instances" },
+      { title: "统计分析", icon: BarChart, href: "/workflow/statistics" },
+    ],
+  },
+  {
     title: "系统设置",
     icon: Settings,
     children: [
@@ -142,7 +165,11 @@ const menuItems = [
       { title: "安全设置", icon: Lock, href: "/settings/security" },
       { title: "权限管理", icon: Key, href: "/settings/permissions" },
       { title: "隐私设置", icon: Eye, href: "/settings/privacy" },
-      { title: "通知设置", icon: Notification, href: "/settings/notifications" },
+      {
+        title: "通知设置",
+        icon: Notification,
+        href: "/settings/notifications",
+      },
       { title: "外观设置", icon: Paintbrush, href: "/settings/appearance" },
       { title: "语言设置", icon: Languages, href: "/settings/language" },
       { title: "移动设置", icon: Tablet, href: "/settings/mobile" },
@@ -175,15 +202,19 @@ const menuItems = [
       { title: "账户安全", icon: Shield, href: "/profile/security" },
     ],
   },
-]
+];
 
 export default function Component() {
-  const [activeMenu, setActiveMenu] = useState("仪表盘")
-  const [openMenus, setOpenMenus] = useState<string[]>([])
+  const [activeMenu, setActiveMenu] = useState("仪表盘");
+  const [openMenus, setOpenMenus] = useState<string[]>([]);
 
   const toggleMenu = (title: string) => {
-    setOpenMenus((prev) => (prev.includes(title) ? prev.filter((item) => item !== title) : [...prev, title]))
-  }
+    setOpenMenus((prev) =>
+      prev.includes(title)
+        ? prev.filter((item) => item !== title)
+        : [...prev, title]
+    );
+  };
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
@@ -207,7 +238,10 @@ export default function Component() {
         {menuItems.map((item) => (
           <div key={item.title}>
             {item.children ? (
-              <Collapsible open={openMenus.includes(item.title)} onOpenChange={() => toggleMenu(item.title)}>
+              <Collapsible
+                open={openMenus.includes(item.title)}
+                onOpenChange={() => toggleMenu(item.title)}
+              >
                 <CollapsibleTrigger asChild>
                   <Button
                     variant={activeMenu === item.title ? "secondary" : "ghost"}
@@ -218,7 +252,9 @@ export default function Component() {
                       <span>{item.title}</span>
                     </div>
                     <ChevronDown
-                      className={`w-4 h-4 transition-transform ${openMenus.includes(item.title) ? "rotate-180" : ""}`}
+                      className={`w-4 h-4 transition-transform ${
+                        openMenus.includes(item.title) ? "rotate-180" : ""
+                      }`}
                     />
                   </Button>
                 </CollapsibleTrigger>
@@ -258,7 +294,7 @@ export default function Component() {
         </div>
       </div>
     </div>
-  )
+  );
 
   // 根据当前菜单渲染不同的内容
   const renderContent = () => {
@@ -310,7 +346,7 @@ export default function Component() {
               </CardContent>
             </Card>
           </div>
-        )
+        );
 
       // 用户管理相关页面
       case "用户列表":
@@ -327,15 +363,22 @@ export default function Component() {
               <CardContent className="p-6">
                 <div className="space-y-4">
                   {[1, 2, 3, 4, 5].map((i) => (
-                    <div key={i} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div
+                      key={i}
+                      className="flex items-center justify-between p-4 border rounded-lg"
+                    >
                       <div className="flex items-center space-x-4">
                         <Avatar>
-                          <AvatarImage src={`/generic-placeholder-graphic.png?height=40&width=40`} />
+                          <AvatarImage
+                            src={`/generic-placeholder-graphic.png?height=40&width=40`}
+                          />
                           <AvatarFallback>用户{i}</AvatarFallback>
                         </Avatar>
                         <div>
                           <p className="font-medium">用户{i}</p>
-                          <p className="text-sm text-muted-foreground">user{i}@example.com</p>
+                          <p className="text-sm text-muted-foreground">
+                            user{i}@example.com
+                          </p>
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
@@ -350,7 +393,7 @@ export default function Component() {
               </CardContent>
             </Card>
           </div>
-        )
+        );
 
       case "角色权限":
         return (
@@ -369,19 +412,29 @@ export default function Component() {
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-sm">用户管理</span>
-                        <Badge variant={role === "管理员" ? "default" : "secondary"}>
-                          {role === "管理员" ? "完全访问" : role === "编辑者" ? "编辑" : "只读"}
+                        <Badge
+                          variant={role === "管理员" ? "default" : "secondary"}
+                        >
+                          {role === "管理员"
+                            ? "完全访问"
+                            : role === "编辑者"
+                            ? "编辑"
+                            : "只读"}
                         </Badge>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-sm">数据分析</span>
-                        <Badge variant={role === "查看者" ? "secondary" : "default"}>
+                        <Badge
+                          variant={role === "查看者" ? "secondary" : "default"}
+                        >
                           {role === "查看者" ? "只读" : "完全访问"}
                         </Badge>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-sm">系统设置</span>
-                        <Badge variant={role === "管理员" ? "default" : "secondary"}>
+                        <Badge
+                          variant={role === "管理员" ? "default" : "secondary"}
+                        >
                           {role === "管理员" ? "完全访问" : "禁止"}
                         </Badge>
                       </div>
@@ -391,7 +444,7 @@ export default function Component() {
               ))}
             </div>
           </div>
-        )
+        );
 
       // 数据分析相关页面
       case "数据概览":
@@ -401,7 +454,9 @@ export default function Component() {
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">今日访问量</CardTitle>
+                  <CardTitle className="text-sm font-medium">
+                    今日访问量
+                  </CardTitle>
                   <BarChart className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
@@ -421,7 +476,9 @@ export default function Component() {
               </Card>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">活跃用户</CardTitle>
+                  <CardTitle className="text-sm font-medium">
+                    活跃用户
+                  </CardTitle>
                   <Users className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
@@ -441,7 +498,7 @@ export default function Component() {
               </Card>
             </div>
           </div>
-        )
+        );
 
       case "实时监控":
         return (
@@ -510,14 +567,16 @@ export default function Component() {
                     </div>
                     <div className="flex items-center justify-between">
                       <span>丢包率</span>
-                      <span className="text-sm font-medium text-green-600">0%</span>
+                      <span className="text-sm font-medium text-green-600">
+                        0%
+                      </span>
                     </div>
                   </div>
                 </CardContent>
               </Card>
             </div>
           </div>
-        )
+        );
 
       // 智能引擎相关页面
       case "AI 智能":
@@ -533,7 +592,9 @@ export default function Component() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-muted-foreground mb-4">基于机器学习的数据分析和预测</p>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    基于机器学习的数据分析和预测
+                  </p>
                   <Button className="w-full">启动分析</Button>
                 </CardContent>
               </Card>
@@ -545,7 +606,9 @@ export default function Component() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-muted-foreground mb-4">训练和优化AI模型</p>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    训练和优化AI模型
+                  </p>
                   <Button className="w-full bg-transparent" variant="outline">
                     查看模型
                   </Button>
@@ -559,7 +622,9 @@ export default function Component() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-muted-foreground mb-4">自动化数据清洗和预处理</p>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    自动化数据清洗和预处理
+                  </p>
                   <Button className="w-full bg-transparent" variant="outline">
                     处理数据
                   </Button>
@@ -567,7 +632,7 @@ export default function Component() {
               </Card>
             </div>
           </div>
-        )
+        );
 
       // 商务功能相关页面
       case "商务管理":
@@ -577,7 +642,9 @@ export default function Component() {
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">月度收入</CardTitle>
+                  <CardTitle className="text-sm font-medium">
+                    月度收入
+                  </CardTitle>
                   <CreditCard className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
@@ -587,7 +654,9 @@ export default function Component() {
               </Card>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">订单数量</CardTitle>
+                  <CardTitle className="text-sm font-medium">
+                    订单数量
+                  </CardTitle>
                   <ShoppingCart className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
@@ -597,7 +666,9 @@ export default function Component() {
               </Card>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">客户数量</CardTitle>
+                  <CardTitle className="text-sm font-medium">
+                    客户数量
+                  </CardTitle>
                   <UserCheck className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
@@ -617,7 +688,7 @@ export default function Component() {
               </Card>
             </div>
           </div>
-        )
+        );
 
       // 系统设置相关页面
       case "常规设置":
@@ -665,7 +736,7 @@ export default function Component() {
               </Card>
             </div>
           </div>
-        )
+        );
 
       // 项目管理相关页面
       case "项目概览":
@@ -673,34 +744,41 @@ export default function Component() {
           <div className="space-y-6">
             <h2 className="text-2xl font-bold">项目概览</h2>
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {["YanYu Cloud³", "智能分析系统", "移动端应用"].map((project, i) => (
-                <Card key={project}>
-                  <CardHeader>
-                    <CardTitle className="flex items-center">
-                      <Target className="w-5 h-5 mr-2" />
-                      {project}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="flex justify-between">
-                        <span className="text-sm">进度</span>
-                        <span className="text-sm font-medium">{85 - i * 15}%</span>
+              {["YanYu Cloud³", "智能分析系统", "移动端应用"].map(
+                (project, i) => (
+                  <Card key={project}>
+                    <CardHeader>
+                      <CardTitle className="flex items-center">
+                        <Target className="w-5 h-5 mr-2" />
+                        {project}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        <div className="flex justify-between">
+                          <span className="text-sm">进度</span>
+                          <span className="text-sm font-medium">
+                            {85 - i * 15}%
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-blue-600 h-2 rounded-full"
+                            style={{ width: `${85 - i * 15}%` }}
+                          ></div>
+                        </div>
+                        <div className="flex justify-between text-sm text-muted-foreground">
+                          <span>开始时间: 2024-01-01</span>
+                          <span>预计完成: 2024-03-01</span>
+                        </div>
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${85 - i * 15}%` }}></div>
-                      </div>
-                      <div className="flex justify-between text-sm text-muted-foreground">
-                        <span>开始时间: 2024-01-01</span>
-                        <span>预计完成: 2024-03-01</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                )
+              )}
             </div>
           </div>
-        )
+        );
 
       // 个人资料相关页面
       case "基本信息":
@@ -723,7 +801,9 @@ export default function Component() {
                     </Avatar>
                     <div>
                       <h3 className="font-medium">系统管理员</h3>
-                      <p className="text-sm text-muted-foreground">admin@yanyu.cloud</p>
+                      <p className="text-sm text-muted-foreground">
+                        admin@yanyu.cloud
+                      </p>
                     </div>
                   </div>
                   <div className="space-y-2">
@@ -769,14 +849,16 @@ export default function Component() {
               </Card>
             </div>
           </div>
-        )
+        );
 
       default:
         return (
           <Card>
             <CardHeader>
               <CardTitle>{activeMenu}</CardTitle>
-              <CardDescription>{activeMenu}功能模块正在开发中，敬请期待...</CardDescription>
+              <CardDescription>
+                {activeMenu}功能模块正在开发中，敬请期待...
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-center h-64 text-muted-foreground">
@@ -788,9 +870,9 @@ export default function Component() {
               </div>
             </CardContent>
           </Card>
-        )
+        );
     }
-  }
+  };
 
   return (
     <div className="flex h-screen bg-background">
@@ -820,7 +902,10 @@ export default function Component() {
             <div className="flex-1 max-w-md">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                <Input placeholder="搜索功能、用户、内容..." className="pl-10" />
+                <Input
+                  placeholder="搜索功能、用户、内容..."
+                  className="pl-10"
+                />
               </div>
             </div>
 
@@ -835,9 +920,15 @@ export default function Component() {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                  <Button
+                    variant="ghost"
+                    className="relative h-8 w-8 rounded-full"
+                  >
                     <Avatar className="h-8 w-8">
-                      <AvatarImage src="/placeholder.svg?height=32&width=32" alt="用户头像" />
+                      <AvatarImage
+                        src="/placeholder.svg?height=32&width=32"
+                        alt="用户头像"
+                      />
                       <AvatarFallback>管理</AvatarFallback>
                     </Avatar>
                   </Button>
@@ -845,8 +936,12 @@ export default function Component() {
                 <DropdownMenuContent className="w-56" align="end" forceMount>
                   <DropdownMenuLabel className="font-normal">
                     <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-medium leading-none">系统管理员</p>
-                      <p className="text-xs leading-none text-muted-foreground">admin@yanyu.cloud</p>
+                      <p className="text-sm font-medium leading-none">
+                        系统管理员
+                      </p>
+                      <p className="text-xs leading-none text-muted-foreground">
+                        admin@yanyu.cloud
+                      </p>
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
@@ -871,7 +966,9 @@ export default function Component() {
           <div className="max-w-7xl mx-auto">
             {/* Page Header */}
             <div className="mb-8">
-              <h1 className="text-3xl font-bold tracking-tight">{activeMenu}</h1>
+              <h1 className="text-3xl font-bold tracking-tight">
+                {activeMenu}
+              </h1>
               <p className="text-muted-foreground mt-2">
                 {activeMenu === "仪表盘"
                   ? "欢迎使用言枢象限智能管理平台，开启数字化管理新体验"
@@ -885,5 +982,5 @@ export default function Component() {
         </main>
       </div>
     </div>
-  )
+  );
 }

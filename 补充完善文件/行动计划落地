@@ -1,0 +1,4438 @@
+# YanYu Cloud³ 智能商务管理系统 - 系统完善建议与执行计划
+## 执行计划总览
+```json
+{
+  "projectName": "YanYu Cloud³ 智能商务管理系统",
+  "version": "3.0.0",
+  "planGeneratedAt": "2025-01-XX",
+  "totalPhases": 4,
+  "estimatedDuration": "12个月",
+  "technologiesUsed": [
+    "Next.js 15",
+    "TypeScript",
+    "PostgreSQL",
+    "Redis",
+    "OpenAI API",
+    "Docker",
+    "Prometheus",
+    "Grafana"
+  ]
+}
+
+```
+---
+## Phase 1: 立即行动（第1-2周）
+### Task 1.1: 建立基础后端架构
+描述: 搭建完整的后端服务器架构，包括Express服务器、数据库连接池、中间件配置和基础路由系统。
+技术建议:
+1. 使用 Express.js 作为 HTTP 服务器框架
+2. 采用 PostgreSQL 作为主数据库，Redis 作为缓存层
+3. 实现连接池管理，优化数据库连接性能
+4. 建立统一的错误处理和日志记录机制
+5. 使用 TypeScript 提供类型安全
+代码实现:
+```typescript
+// src/index.ts - 服务器入口文件
+import express, { Application, Request, Response, NextFunction } from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
+import compression from 'compression';
+import rateLimit from 'express-rate-limit';
+import { pool } from './config/database';
+import { redis } from './config/redis';
+import { logger } from './config/logger';
+import { errorHandler } from './middleware/error-handler';
+import { requestLogger } from './middleware/request-logger';
+import apiRouter from './routes';
+
+const app: Application = express();
+const PORT = process.env.PORT || 3001;
+
+// 安全中间件
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true,
+  },
+}));
+
+// CORS 配置
+app.use(cors({
+  origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
+// 压缩响应
+app.use(compression());
+
+// 解析请求体
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// 请求日志
+app.use(requestLogger);
+
+// 速率限制
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15分钟
+  max: 100, // 限制100个请求
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    logger.warn('Rate limit exceeded', {
+      ip: req.ip,
+      path: req.path,
+    });
+    res.status(429).json({
+      success: false,
+      error: 'Too many requests, please try again later.',
+    });
+  },
+});
+
+app.use('/api/', limiter);
+
+// 健康检查端点
+app.get('/health', async (req: Request, res: Response) => {
+  try {
+    // 检查数据库连接
+    await pool.query('SELECT 1');
+    
+    // 检查 Redis 连接
+    await redis.ping();
+    
+    res.status(200).json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      services: {
+        database: 'connected',
+        redis: 'connected',
+      },
+    });
+  } catch (error) {
+    logger.error('Health check failed', { error });
+    res.status(503).json({
+      status: 'unhealthy',
+      timestamp: new Date().toISOString(),
+      error: 'Service unavailable',
+    });
+  }
+});
+
+// API 路由
+app.use('/api', apiRouter);
+
+// 404 处理
+app.use((req: Request, res: Response) => {
+  res.status(404).json({
+    success: false,
+    error: 'Not Found',
+    message: `Cannot ${req.method} ${req.path}`,
+  });
+});
+
+// 错误处理中间件
+app.use(errorHandler);
+
+// 启动服务器
+const startServer = async () => {
+  try {
+    // 测试数据库连接
+    const dbResult = await pool.query('SELECT NOW()');
+    logger.info('Database connected', { timestamp: dbResult.rows[0].now });
+    
+    // 测试 Redis 连接
+    await redis.ping();
+    logger.info('Redis connected');
+    
+    // 启动 HTTP 服务器
+    app.listen(PORT, () => {
+      logger.info(`Server is running on port ${PORT}`, {
+        environment: process.env.NODE_ENV,
+        port: PORT,
+      });
+    });
+  } catch (error) {
+    logger.error('Failed to start server', { error });
+    process.exit(1);
+  }
+};
+
+// 优雅关闭
+const gracefulShutdown = async (signal: string) => {
+  logger.info(`${signal} signal received, closing server...`);
+  
+  try {
+    await pool.end();
+    logger.info('Database pool closed');
+    
+    await redis.quit();
+    logger.info('Redis connection closed');
+    
+    process.exit(0);
+  } catch (error) {
+    logger.error('Error during shutdown', { error });
+    process.exit(1);
+  }
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+startServer();
+
+```
+```typescript
+// src/config/database.ts - 数据库配置
+import { Pool, PoolConfig } from 'pg';
+import { logger } from './logger';
+
+const poolConfig: PoolConfig = {
+  host: process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.DB_PORT || '5432', 10),
+  database: process.env.DB_NAME || 'yanyu_cloud',
+  user: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD,
+  max: parseInt(process.env.DB_POOL_MAX || '20', 10),
+  min: parseInt(process.env.DB_POOL_MIN || '5', 10),
+  idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT || '30000', 10),
+  connectionTimeoutMillis: parseInt(process.env.DB_CONNECT_TIMEOUT || '10000', 10),
+  ssl: process.env.DB_SSL === 'true' ? {
+    rejectUnauthorized: false,
+  } : false,
+};
+
+export const pool = new Pool(poolConfig);
+
+// 连接错误处理
+pool.on('error', (err, client) => {
+  logger.error('Unexpected error on idle database client', { error: err });
+});
+
+// 连接事件
+pool.on('connect', (client) => {
+  logger.debug('New database client connected');
+});
+
+pool.on('acquire', (client) => {
+  logger.debug('Database client acquired from pool');
+});
+
+pool.on('remove', (client) => {
+  logger.debug('Database client removed from pool');
+});
+
+// 测试数据库连接
+export const testConnection = async (): Promise<boolean> => {
+  try {
+    const result = await pool.query('SELECT NOW()');
+    logger.info('Database connection test successful', {
+      timestamp: result.rows[0].now,
+    });
+    return true;
+  } catch (error) {
+    logger.error('Database connection test failed', { error });
+    return false;
+  }
+};
+
+```
+```typescript
+// src/config/redis.ts - Redis 配置
+import Redis from 'ioredis';
+import { logger } from './logger';
+
+const redisConfig = {
+  host: process.env.REDIS_HOST || 'localhost',
+  port: parseInt(process.env.REDIS_PORT || '6379', 10),
+  password: process.env.REDIS_PASSWORD,
+  db: parseInt(process.env.REDIS_DB || '0', 10),
+  keyPrefix: process.env.REDIS_KEY_PREFIX || 'yanyu:',
+  retryStrategy: (times: number) => {
+    const delay = Math.min(times * 50, 2000);
+    return delay;
+  },
+  maxRetriesPerRequest: 3,
+};
+
+export const redis = new Redis(redisConfig);
+
+redis.on('connect', () => {
+  logger.info('Redis client connected');
+});
+
+redis.on('ready', () => {
+  logger.info('Redis client ready');
+});
+
+redis.on('error', (error) => {
+  logger.error('Redis client error', { error });
+});
+
+redis.on('close', () => {
+  logger.warn('Redis client connection closed');
+});
+
+redis.on('reconnecting', () => {
+  logger.info('Redis client reconnecting');
+});
+
+// Redis 工具函数
+export const cacheGet = async <T>(key: string): Promise<T | null> => {
+  try {
+    const data = await redis.get(key);
+    return data ? JSON.parse(data) : null;
+  } catch (error) {
+    logger.error('Cache get error', { error, key });
+    return null;
+  }
+};
+
+export const cacheSet = async (
+  key: string,
+  value: any,
+  ttl: number = 3600
+): Promise<boolean> => {
+  try {
+    await redis.setex(key, ttl, JSON.stringify(value));
+    return true;
+  } catch (error) {
+    logger.error('Cache set error', { error, key });
+    return false;
+  }
+};
+
+export const cacheDel = async (key: string): Promise<boolean> => {
+  try {
+    await redis.del(key);
+    return true;
+  } catch (error) {
+    logger.error('Cache delete error', { error, key });
+    return false;
+  }
+};
+
+export const cacheExists = async (key: string): Promise<boolean> => {
+  try {
+    const result = await redis.exists(key);
+    return result === 1;
+  } catch (error) {
+    logger.error('Cache exists check error', { error, key });
+    return false;
+  }
+};
+
+```
+```typescript
+// src/middleware/error-handler.ts - 统一错误处理
+import { Request, Response, NextFunction } from 'express';
+import { logger } from '../config/logger';
+
+export class AppError extends Error {
+  statusCode: number;
+  code: string;
+  isOperational: boolean;
+  details?: any;
+
+  constructor(
+    message: string,
+    statusCode: number = 500,
+    code: string = 'INTERNAL_ERROR',
+    details?: any
+  ) {
+    super(message);
+    this.statusCode = statusCode;
+    this.code = code;
+    this.isOperational = true;
+    this.details = details;
+    Error.captureStackTrace(this, this.constructor);
+  }
+
+  static badRequest(message: string, code: string = 'BAD_REQUEST', details?: any) {
+    return new AppError(message, 400, code, details);
+  }
+
+  static unauthorized(message: string = 'Unauthorized', code: string = 'UNAUTHORIZED') {
+    return new AppError(message, 401, code);
+  }
+
+  static forbidden(message: string = 'Forbidden', code: string = 'FORBIDDEN') {
+    return new AppError(message, 403, code);
+  }
+
+  static notFound(message: string = 'Not Found', code: string = 'NOT_FOUND') {
+    return new AppError(message, 404, code);
+  }
+
+  static conflict(message: string, code: string = 'CONFLICT', details?: any) {
+    return new AppError(message, 409, code, details);
+  }
+
+  static internal(message: string = 'Internal Server Error', code: string = 'INTERNAL_ERROR') {
+    return new AppError(message, 500, code);
+  }
+}
+
+export const errorHandler = (
+  err: Error | AppError,
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  if (err instanceof AppError) {
+    // 操作错误 - 已知错误
+    logger.warn('Operational error', {
+      code: err.code,
+      message: err.message,
+      statusCode: err.statusCode,
+      path: req.path,
+      method: req.method,
+      details: err.details,
+    });
+
+    return res.status(err.statusCode).json({
+      success: false,
+      error: err.code,
+      message: err.message,
+      details: err.details,
+    });
+  }
+
+  // 编程错误 - 未知错误
+  logger.error('Programming error', {
+    error: err,
+    stack: err.stack,
+    path: req.path,
+    method: req.method,
+  });
+
+  // 生产环境不暴露错误详情
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(500).json({
+      success: false,
+      error: 'INTERNAL_ERROR',
+      message: 'An unexpected error occurred',
+    });
+  }
+
+  // 开发环境返回详细错误
+  return res.status(500).json({
+    success: false,
+    error: 'INTERNAL_ERROR',
+    message: err.message,
+    stack: err.stack,
+  });
+};
+
+// 异步错误处理包装器
+export const asyncHandler = (
+  fn: (req: Request, res: Response, next: NextFunction) => Promise<any>
+) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+};
+
+```
+```typescript
+// src/middleware/request-logger.ts - 请求日志中间件
+import { Request, Response, NextFunction } from 'express';
+import { logger } from '../config/logger';
+
+export const requestLogger = (req: Request, res: Response, next: NextFunction) => {
+  const startTime = Date.now();
+
+  // 记录请求
+  logger.info('Incoming request', {
+    method: req.method,
+    path: req.path,
+    query: req.query,
+    ip: req.ip,
+    userAgent: req.get('user-agent'),
+  });
+
+  // 监听响应完成
+  res.on('finish', () => {
+    const duration = Date.now() - startTime;
+    
+    const logData = {
+      method: req.method,
+      path: req.path,
+      statusCode: res.statusCode,
+      duration: `${duration}ms`,
+      ip: req.ip,
+    };
+
+    if (res.statusCode >= 500) {
+      logger.error('Request completed with server error', logData);
+    } else if (res.statusCode >= 400) {
+      logger.warn('Request completed with client error', logData);
+    } else {
+      logger.info('Request completed successfully', logData);
+    }
+  });
+
+  next();
+};
+
+```
+依赖模块:
+- express
+- pg (PostgreSQL 客户端)
+- ioredis (Redis 客户端)
+- helmet (安全中间件)
+- cors (跨域资源共享)
+- compression (响应压缩)
+- express-rate-limit (速率限制)
+- winston (日志系统)
+预期影响:
+- 建立稳定可靠的后端服务基础
+- 提升系统安全性（防止常见攻击）
+- 优化数据库连接管理，提升性能 20-30%
+- 实现统一的错误处理和日志记录
+- 为后续功能开发提供坚实基础
+---
+### Task 1.2: 完善身份认证系统
+描述: 实现完整的 JWT 认证系统，包括用户注册、登录、令牌刷新、密码重置等核心功能。
+技术建议:
+1. 使用 JWT 进行无状态身份验证
+2. 实现访问令牌和刷新令牌双令牌机制
+3. 使用 bcrypt 进行密码加密
+4. 实现基于角色的访问控制 (RBAC)
+5. 添加登录尝试限制和账户锁定机制
+代码实现:
+```typescript
+// src/services/auth.service.ts - 认证服务
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
+import { pool } from '../config/database';
+import { redis } from '../config/redis';
+import { logger } from '../config/logger';
+import { AppError } from '../middleware/error-handler';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key';
+const ACCESS_TOKEN_EXPIRY = '15m';
+const REFRESH_TOKEN_EXPIRY = '7d';
+const SALT_ROUNDS = 10;
+
+interface TokenPayload {
+  userId: string;
+  email: string;
+  roles: string[];
+}
+
+export class AuthService {
+  // 用户注册
+  static async register(
+    email: string,
+    password: string,
+    firstName: string,
+    lastName: string
+  ): Promise<{ user: any; accessToken: string; refreshToken: string }> {
+    try {
+      // 检查邮箱是否已存在
+      const existingUser = await pool.query(
+        'SELECT id FROM users WHERE email = $1',
+        [email.toLowerCase()]
+      );
+
+      if (existingUser.rows.length > 0) {
+        throw AppError.conflict('Email already exists', 'EMAIL_EXISTS');
+      }
+
+      // 加密密码
+      const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+
+      // 创建用户
+      const userId = crypto.randomUUID();
+      const result = await pool.query(
+        `INSERT INTO users (
+          id, email, password_hash, first_name, last_name, 
+          status, created_at, updated_at
+        )
+        VALUES ($1, $2, $3, $4, $5, 'active', NOW(), NOW())
+        RETURNING id, email, first_name, last_name, status, created_at`,
+        [userId, email.toLowerCase(), hashedPassword, firstName, lastName]
+      );
+
+      const user = result.rows[0];
+
+      // 分配默认角色
+      await pool.query(
+        `INSERT INTO user_roles (user_id, role_id)
+        SELECT $1, id FROM roles WHERE role_name = 'user'`,
+        [userId]
+      );
+
+      // 生成令牌
+      const accessToken = this.generateAccessToken({
+        userId: user.id,
+        email: user.email,
+        roles: ['user'],
+      });
+
+      const refreshToken = this.generateRefreshToken({
+        userId: user.id,
+        email: user.email,
+        roles: ['user'],
+      });
+
+      // 存储刷新令牌
+      await this.storeRefreshToken(userId, refreshToken);
+
+      logger.info('User registered successfully', { userId, email });
+
+      return {
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.first_name,
+          lastName: user.last_name,
+          status: user.status,
+          createdAt: user.created_at,
+        },
+        accessToken,
+        refreshToken,
+      };
+    } catch (error) {
+      logger.error('Registration failed', { error, email });
+      throw error;
+    }
+  }
+
+  // 用户登录
+  static async login(
+    email: string,
+    password: string,
+    ipAddress: string
+  ): Promise<{ user: any; accessToken: string; refreshToken: string }> {
+    try {
+      // 检查登录失败次数
+      await this.checkLoginAttempts(email, ipAddress);
+
+      // 查找用户
+      const result = await pool.query(
+        `SELECT u.id, u.email, u.password_hash, u.first_name, u.last_name, 
+                u.status, u.locked_at, ARRAY_AGG(r.role_name) as roles
+        FROM users u
+        LEFT JOIN user_roles ur ON u.id = ur.user_id
+        LEFT JOIN roles r ON ur.role_id = r.id
+        WHERE u.email = $1
+        GROUP BY u.id`,
+        [email.toLowerCase()]
+      );
+
+      if (result.rows.length === 0) {
+        await this.recordFailedLogin(email, ipAddress);
+        throw AppError.unauthorized('Invalid credentials', 'INVALID_CREDENTIALS');
+      }
+
+      const user = result.rows[0];
+
+      // 检查账户状态
+      if (user.status === 'locked') {
+        throw AppError.forbidden('Account is locked', 'ACCOUNT_LOCKED');
+      }
+
+      if (user.status === 'inactive') {
+        throw AppError.forbidden('Account is inactive', 'ACCOUNT_INACTIVE');
+      }
+
+      // 验证密码
+      const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+
+      if (!isPasswordValid) {
+        await this.recordFailedLogin(email, ipAddress);
+        throw AppError.unauthorized('Invalid credentials', 'INVALID_CREDENTIALS');
+      }
+
+      // 清除失败记录
+      await this.clearLoginAttempts(email, ipAddress);
+
+      // 生成令牌
+      const accessToken = this.generateAccessToken({
+        userId: user.id,
+        email: user.email,
+        roles: user.roles || ['user'],
+      });
+
+      const refreshToken = this.generateRefreshToken({
+        userId: user.id,
+        email: user.email,
+        roles: user.roles || ['user'],
+      });
+
+      // 存储刷新令牌
+      await this.storeRefreshToken(user.id, refreshToken);
+
+      // 更新最后登录时间
+      await pool.query(
+        `UPDATE users 
+        SET last_login_at = NOW(), last_login_ip = $1, login_count = login_count + 1
+        WHERE id = $2`,
+        [ipAddress, user.id]
+      );
+
+      logger.info('User logged in successfully', { userId: user.id, email });
+
+      return {
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.first_name,
+          lastName: user.last_name,
+          status: user.status,
+          roles: user.roles,
+        },
+        accessToken,
+        refreshToken,
+      };
+    } catch (error) {
+      logger.error('Login failed', { error, email });
+      throw error;
+    }
+  }
+
+  // 刷新令牌
+  static async refreshToken(
+    refreshToken: string
+  ): Promise<{ accessToken: string; refreshToken: string }> {
+    try {
+      // 验证刷新令牌
+      const payload = jwt.verify(refreshToken, JWT_REFRESH_SECRET) as TokenPayload;
+
+      // 检查令牌是否在黑名单中
+      const isBlacklisted = await redis.get(`blacklist:${refreshToken}`);
+      if (isBlacklisted) {
+        throw AppError.unauthorized('Token has been revoked', 'TOKEN_REVOKED');
+      }
+
+      // 检查用户状态
+      const result = await pool.query(
+        `SELECT u.id, u.email, u.status, ARRAY_AGG(r.role_name) as roles
+        FROM users u
+        LEFT JOIN user_roles ur ON u.id = ur.user_id
+        LEFT JOIN roles r ON ur.role_id = r.id
+        WHERE u.id = $1
+        GROUP BY u.id`,
+        [payload.userId]
+      );
+
+      if (result.rows.length === 0) {
+        throw AppError.unauthorized('User not found', 'USER_NOT_FOUND');
+      }
+
+      const user = result.rows[0];
+
+      if (user.status !== 'active') {
+        throw AppError.forbidden('Account is not active', 'ACCOUNT_NOT_ACTIVE');
+      }
+
+      // 生成新令牌
+      const newAccessToken = this.generateAccessToken({
+        userId: user.id,
+        email: user.email,
+        roles: user.roles || ['user'],
+      });
+
+      const newRefreshToken = this.generateRefreshToken({
+        userId: user.id,
+        email: user.email,
+        roles: user.roles || ['user'],
+      });
+
+      // 将旧令牌加入黑名单
+      await redis.setex(`blacklist:${refreshToken}`, 7 * 24 * 60 * 60, '1');
+
+      // 存储新刷新令牌
+      await this.storeRefreshToken(user.id, newRefreshToken);
+
+      logger.info('Token refreshed successfully', { userId: user.id });
+
+      return {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+      };
+    } catch (error) {
+      logger.error('Token refresh failed', { error });
+      throw AppError.unauthorized('Invalid or expired refresh token', 'INVALID_REFRESH_TOKEN');
+    }
+  }
+
+  // 登出
+  static async logout(userId: string, refreshToken: string): Promise<void> {
+    try {
+      // 将刷新令牌加入黑名单
+      await redis.setex(`blacklist:${refreshToken}`, 7 * 24 * 60 * 60, '1');
+
+      // 删除存储的刷新令牌
+      await redis.del(`refresh_token:${userId}`);
+
+      logger.info('User logged out successfully', { userId });
+    } catch (error) {
+      logger.error('Logout failed', { error, userId });
+      throw error;
+    }
+  }
+
+  // 生成访问令牌
+  private static generateAccessToken(payload: TokenPayload): string {
+    return jwt.sign(payload, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
+  }
+
+  // 生成刷新令牌
+  private static generateRefreshToken(payload: TokenPayload): string {
+    return jwt.sign(payload, JWT_REFRESH_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRY });
+  }
+
+  // 存储刷新令牌
+  private static async storeRefreshToken(userId: string, token: string): Promise<void> {
+    await redis.setex(`refresh_token:${userId}`, 7 * 24 * 60 * 60, token);
+  }
+
+  // 验证访问令牌
+  static verifyAccessToken(token: string): TokenPayload {
+    try {
+      return jwt.verify(token, JWT_SECRET) as TokenPayload;
+    } catch (error) {
+      throw AppError.unauthorized('Invalid or expired token', 'INVALID_TOKEN');
+    }
+  }
+
+  // 记录失败登录
+  private static async recordFailedLogin(email: string, ipAddress: string): Promise<void> {
+    const key = `login_attempts:${email}:${ipAddress}`;
+    await redis.incr(key);
+    await redis.expire(key, 15 * 60); // 15分钟过期
+  }
+
+  // 检查登录尝试
+  private static async checkLoginAttempts(email: string, ipAddress: string): Promise<void> {
+    const key = `login_attempts:${email}:${ipAddress}`;
+    const attempts = await redis.get(key);
+    const attemptCount = attempts ? parseInt(attempts, 10) : 0;
+
+    if (attemptCount >= 5) {
+      throw AppError.forbidden(
+        'Too many login attempts. Please try again later.',
+        'TOO_MANY_ATTEMPTS'
+      );
+    }
+  }
+
+  // 清除登录尝试记录
+  private static async clearLoginAttempts(email: string, ipAddress: string): Promise<void> {
+    const key = `login_attempts:${email}:${ipAddress}`;
+    await redis.del(key);
+  }
+
+  // 请求密码重置
+  static async requestPasswordReset(email: string): Promise<void> {
+    try {
+      const result = await pool.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
+
+      if (result.rows.length === 0) {
+        // 安全考虑：不透露用户是否存在
+        logger.warn('Password reset requested for non-existent email', { email });
+        return;
+      }
+
+      const userId = result.rows[0].id;
+
+      // 生成重置令牌
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+      // 存储重置令牌（1小时有效）
+      await redis.setex(`password_reset:${hashedToken}`, 3600, userId);
+
+      // 发送重置邮件（实现略）
+      // await EmailService.sendPasswordResetEmail(email, resetToken);
+
+      logger.info('Password reset requested', { userId, email });
+    } catch (error) {
+      logger.error('Password reset request failed', { error, email });
+      throw error;
+    }
+  }
+
+  // 重置密码
+  static async resetPassword(token: string, newPassword: string): Promise<void> {
+    try {
+      const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+      const userId = await redis.get(`password_reset:${hashedToken}`);
+
+      if (!userId) {
+        throw AppError.badRequest('Invalid or expired reset token', 'INVALID_RESET_TOKEN');
+      }
+
+      // 加密新密码
+      const hashedPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
+
+      // 更新密码
+      await pool.query(
+        'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+        [hashedPassword, userId]
+      );
+
+      // 删除重置令牌
+      await redis.del(`password_reset:${hashedToken}`);
+
+      // 撤销所有现有会话
+      await redis.del(`refresh_token:${userId}`);
+
+      logger.info('Password reset successfully', { userId });
+    } catch (error) {
+      logger.error('Password reset failed', { error });
+      throw error;
+    }
+  }
+
+  // 修改密码
+  static async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string
+  ): Promise<void> {
+    try {
+      // 获取当前密码哈希
+      const result = await pool.query(
+        'SELECT password_hash FROM users WHERE id = $1',
+        [userId]
+      );
+
+      if (result.rows.length === 0) {
+        throw AppError.notFound('User not found', 'USER_NOT_FOUND');
+      }
+
+      const currentHash = result.rows[0].password_hash;
+
+      // 验证当前密码
+      const isValid = await bcrypt.compare(currentPassword, currentHash);
+
+      if (!isValid) {
+        throw AppError.unauthorized('Current password is incorrect', 'INVALID_PASSWORD');
+      }
+
+      // 加密新密码
+      const newHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+
+      // 更新密码
+      await pool.query(
+        'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+        [newHash, userId]
+      );
+
+      // 撤销所有现有会话（可选）
+      await redis.del(`refresh_token:${userId}`);
+
+      logger.info('Password changed successfully', { userId });
+    } catch (error) {
+      logger.error('Password change failed', { error, userId });
+      throw error;
+    }
+  }
+}
+
+```
+```typescript
+// src/middleware/auth.middleware.ts - 认证中间件
+import { Request, Response, NextFunction } from 'express';
+import { AuthService } from '../services/auth.service';
+import { AppError } from './error-handler';
+import { logger } from '../config/logger';
+
+// 扩展 Express Request 类型
+declare global {
+  namespace Express {
+    interface Request {
+      user?: {
+        userId: string;
+        email: string;
+        roles: string[];
+      };
+    }
+  }
+}
+
+// 验证访问令牌中间件
+export const authenticate = (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      throw AppError.unauthorized('No token provided', 'NO_TOKEN');
+    }
+
+    const token = authHeader.substring(7);
+
+    // 验证令牌
+    const payload = AuthService.verifyAccessToken(token);
+
+    // 将用户信息附加到请求对象
+    req.user = {
+      userId: payload.userId,
+      email: payload.email,
+      roles: payload.roles,
+    };
+
+    next();
+  } catch (error) {
+    logger.error('Authentication failed', { error });
+    next(error);
+  }
+};
+
+// 角色验证中间件
+export const authorize = (...allowedRoles: string[]) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return next(AppError.unauthorized('Authentication required', 'AUTH_REQUIRED'));
+    }
+
+    const hasRole = req.user.roles.some(role => allowedRoles.includes(role));
+
+    if (!hasRole) {
+      return next(
+        AppError.forbidden(
+          'You do not have permission to access this resource',
+          'INSUFFICIENT_PERMISSIONS'
+        )
+      );
+    }
+
+    next();
+  };
+};
+
+// 可选认证中间件（不强制要求认证）
+export const optionalAuth = (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      const payload = AuthService.verifyAccessToken(token);
+
+      req.user = {
+        userId: payload.userId,
+        email: payload.email,
+        roles: payload.roles,
+      };
+    }
+
+    next();
+  } catch (error) {
+    // 忽略认证错误，继续处理请求
+    next();
+  }
+};
+
+```
+```typescript
+// src/routes/auth.routes.ts - 认证路由
+import { Router, Request, Response } from 'express';
+import { AuthService } from '../services/auth.service';
+import { authenticate } from '../middleware/auth.middleware';
+import { asyncHandler } from '../middleware/error-handler';
+import { body, validationResult } from 'express-validator';
+import { AppError } from '../middleware/error-handler';
+
+const router = Router();
+
+// 验证规则
+const registerValidation = [
+  body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+  body('password')
+    .isLength({ min: 8 })
+    .withMessage('Password must be at least 8 characters long')
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+    .withMessage('Password must contain uppercase, lowercase, and number'),
+  body('firstName').trim().notEmpty().withMessage('First name is required'),
+  body('lastName').trim().notEmpty().withMessage('Last name is required'),
+];
+
+const loginValidation = [
+  body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+  body('password').notEmpty().withMessage('Password is required'),
+];
+
+// 注册
+router.post(
+  '/register',
+  registerValidation,
+  asyncHandler(async (req: Request, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      throw AppError.badRequest('Validation failed', 'VALIDATION_ERROR', errors.array());
+    }
+
+    const { email, password, firstName, lastName } = req.body;
+
+    const result = await AuthService.register(email, password, firstName, lastName);
+
+    res.status(201).json({
+      success: true,
+      data: result,
+    });
+  })
+);
+
+// 登录
+router.post(
+  '/login',
+  loginValidation,
+  asyncHandler(async (req: Request, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      throw AppError.badRequest('Validation failed', 'VALIDATION_ERROR', errors.array());
+    }
+
+    const { email, password } = req.body;
+    const ipAddress = req.ip || 'unknown';
+
+    const result = await AuthService.login(email, password, ipAddress);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+    });
+  })
+);
+
+// 刷新令牌
+router.post(
+  '/refresh',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      throw AppError.badRequest('Refresh token is required', 'NO_REFRESH_TOKEN');
+    }
+
+    const result = await AuthService.refreshToken(refreshToken);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+    });
+  })
+);
+
+// 登出
+router.post(
+  '/logout',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { refreshToken } = req.body;
+    const userId = req.user!.userId;
+
+    await AuthService.logout(userId, refreshToken);
+
+    res.status(200).json({
+      success: true,
+      message: 'Logged out successfully',
+    });
+  })
+);
+
+// 请求密码重置
+router.post(
+  '/password/reset-request',
+  body('email').isEmail().normalizeEmail(),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { email } = req.body;
+
+    await AuthService.requestPasswordReset(email);
+
+    res.status(200).json({
+      success: true,
+      message: 'Password reset email sent if account exists',
+    });
+  })
+);
+
+// 重置密码
+router.post(
+  '/password/reset',
+  [
+    body('token').notEmpty().withMessage('Reset token is required'),
+    body('password')
+      .isLength({ min: 8 })
+      .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/),
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      throw AppError.badRequest('Validation failed', 'VALIDATION_ERROR', errors.array());
+    }
+
+    const { token, password } = req.body;
+
+    await AuthService.resetPassword(token, password);
+
+    res.status(200).json({
+      success: true,
+      message: 'Password reset successfully',
+    });
+  })
+);
+
+// 修改密码
+router.post(
+  '/password/change',
+  authenticate,
+  [
+    body('currentPassword').notEmpty(),
+    body('newPassword')
+      .isLength({ min: 8 })
+      .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/),
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      throw AppError.badRequest('Validation failed', 'VALIDATION_ERROR', errors.array());
+    }
+
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.user!.userId;
+
+    await AuthService.changePassword(userId, currentPassword, newPassword);
+
+    res.status(200).json({
+      success: true,
+      message: 'Password changed successfully',
+    });
+  })
+);
+
+// 获取当前用户信息
+router.get(
+  '/me',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    res.status(200).json({
+      success: true,
+      data: req.user,
+    });
+  })
+);
+
+export default router;
+
+```
+依赖模块:
+- bcrypt (密码加密)
+- jsonwebtoken (JWT令牌)
+- express-validator (输入验证)
+预期影响:
+- 实现安全可靠的用户认证机制
+- 提供完整的密码管理功能
+- 防止暴力破解攻击（登录限制）
+- 支持多设备会话管理
+- 为后续RBAC权限系统奠定基础
+---
+### Task 1.3: 核心功能API开发
+描述: 开发工单管理、订单管理等核心业务API，实现完整的CRUD操作和业务逻辑。
+技术建议:
+1. 采用RESTful API设计规范
+2. 实现数据验证和业务规则检查
+3. 使用事务确保数据一致性
+4. 添加分页、排序、筛选功能
+5. 实现软删除和数据归档
+代码实现:
+```typescript
+// src/services/ticket.service.ts - 工单服务
+import { pool } from '../config/database';
+import { redis, cacheGet, cacheSet, cacheDel } from '../config/redis';
+import { logger } from '../config/logger';
+import { AppError } from '../middleware/error-handler';
+import crypto from 'crypto';
+
+export interface CreateTicketDTO {
+  title: string;
+  description: string;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  category: string;
+  customerId?: string;
+  assigneeId?: string;
+  tags?: string[];
+  attachments?: string[];
+}
+
+export interface UpdateTicketDTO {
+  title?: string;
+  description?: string;
+  priority?: 'low' | 'medium' | 'high' | 'urgent';
+  status?: 'open' | 'in_progress' | 'resolved' | 'closed';
+  category?: string;
+  assigneeId?: string;
+  tags?: string[];
+}
+
+export interface TicketFilters {
+  status?: string;
+  priority?: string;
+  category?: string;
+  assigneeId?: string;
+  customerId?: string;
+  tags?: string[];
+  search?: string;
+  createdAfter?: Date;
+  createdBefore?: Date;
+}
+
+export class TicketService {
+  // 创建工单
+  static async createTicket(
+    data: CreateTicketDTO,
+    creatorId: string
+  ): Promise<any> {
+    const client = await pool.connect();
+    
+    try {
+      await client.query('BEGIN');
+
+      const ticketId = crypto.randomUUID();
+      const ticketNumber = await this.generateTicketNumber();
+
+      // 创建工单
+      const ticketResult = await client.query(
+        `INSERT INTO tickets (
+          id, ticket_number, title, description, priority, 
+          status, category, customer_id, assignee_id, creator_id,
+          created_at, updated_at
+        )
+        VALUES ($1, $2, $3, $4, $5, 'open', $6, $7, $8, $9, NOW(), NOW())
+        RETURNING *`,
+        [
+          ticketId,
+          ticketNumber,
+          data.title,
+          data.description,
+          data.priority,
+          data.category,
+          data.customerId || null,
+          data.assigneeId || null,
+          creatorId,
+        ]
+      );
+
+      const ticket = ticketResult.rows[0];
+
+      // 添加标签
+      if (data.tags && data.tags.length > 0) {
+        for (const tag of data.tags) {
+          await client.query(
+            `INSERT INTO ticket_tags (ticket_id, tag)
+            VALUES ($1, $2)
+            ON CONFLICT DO NOTHING`,
+            [ticketId, tag]
+          );
+        }
+      }
+
+      // 添加附件
+      if (data.attachments && data.attachments.length > 0) {
+        for (const attachment of data.attachments) {
+          await client.query(
+            `INSERT INTO ticket_attachments (ticket_id, file_url, uploaded_by, uploaded_at)
+            VALUES ($1, $2, $3, NOW())`,
+            [ticketId, attachment, creatorId]
+          );
+        }
+      }
+
+      // 创建活动日志
+      await client.query(
+        `INSERT INTO ticket_activities (
+          ticket_id, user_id, action, details, created_at
+        )
+        VALUES ($1, $2, 'created', $3, NOW())`,
+        [ticketId, creatorId, JSON.stringify({ priority: data.priority, category: data.category })]
+      );
+
+      await client.query('COMMIT');
+
+      // 清除相关缓存
+      await cacheDel('tickets:list:*');
+
+      logger.info('Ticket created', { ticketId, ticketNumber, creatorId });
+
+      return await this.getTicketById(ticketId);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      logger.error('Failed to create ticket', { error, data });
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  // 获取工单详情
+  static async getTicketById(ticketId: string): Promise<any> {
+    try {
+      // 尝试从缓存获取
+      const cacheKey = `ticket:${ticketId}`;
+      const cached = await cacheGet(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      const result = await pool.query(
+        `SELECT 
+          t.*,
+          json_build_object(
+            'id', c.id,
+            'name', c.name,
+            'email', c.email
+          ) as customer,
+          json_build_object(
+            'id', a.id,
+            'name', CONCAT(a.first_name, ' ', a.last_name),
+            'email', a.email
+          ) as assignee,
+          json_build_object(
+            'id', cr.id,
+            'name', CONCAT(cr.first_name, ' ', cr.last_name)
+          ) as creator,
+          ARRAY_AGG(DISTINCT tt.tag) FILTER (WHERE tt.tag IS NOT NULL) as tags,
+          COUNT(DISTINCT tm.id) as message_count
+        FROM tickets t
+        LEFT JOIN customers c ON t.customer_id = c.id
+        LEFT JOIN users a ON t.assignee_id = a.id
+        LEFT JOIN users cr ON t.creator_id = cr.id
+        LEFT JOIN ticket_tags tt ON t.id = tt.ticket_id
+        LEFT JOIN ticket_messages tm ON t.id = tm.ticket_id
+        WHERE t.id = $1 AND t.deleted_at IS NULL
+        GROUP BY t.id, c.id, a.id, cr.id`,
+        [ticketId]
+      );
+
+      if (result.rows.length === 0) {
+        throw AppError.notFound('Ticket not found', 'TICKET_NOT_FOUND');
+      }
+
+      const ticket = result.rows[0];
+
+      // 缓存结果
+      await cacheSet(cacheKey, ticket, 300); // 5分钟
+
+      return ticket;
+    } catch (error) {
+      logger.error('Failed to get ticket', { error, ticketId });
+      throw error;
+    }
+  }
+
+  // 更新工单
+  static async updateTicket(
+    ticketId: string,
+    data: UpdateTicketDTO,
+    userId: string
+  ): Promise<any> {
+    const client = await pool.connect();
+    
+    try {
+      await client.query('BEGIN');
+
+      // 检查工单是否存在
+      const existingTicket = await client.query(
+        'SELECT * FROM tickets WHERE id = $1 AND deleted_at IS NULL',
+        [ticketId]
+      );
+
+      if (existingTicket.rows.length === 0) {
+        throw AppError.notFound('Ticket not found', 'TICKET_NOT_FOUND');
+      }
+
+      const oldTicket = existingTicket.rows[0];
+
+      // 构建更新字段
+      const updates: string[] = [];
+      const values: any[] = [];
+      let paramIndex = 1;
+
+      if (data.title !== undefined) {
+        updates.push(`title = $${paramIndex++}`);
+        values.push(data.title);
+      }
+
+      if (data.description !== undefined) {
+        updates.push(`description = $${paramIndex++}`);
+        values.push(data.description);
+      }
+
+      if (data.priority !== undefined) {
+        updates.push(`priority = $${paramIndex++}`);
+        values.push(data.priority);
+      }
+
+      if (data.status !== undefined) {
+        updates.push(`status = $${paramIndex++}`);
+        values.push(data.status);
+
+        // 如果状态变更为已解决或已关闭，记录时间
+        if (data.status === 'resolved' && !oldTicket.resolved_at) {
+          updates.push(`resolved_at = NOW()`);
+        } else if (data.status === 'closed' && !oldTicket.closed_at) {
+          updates.push(`closed_at = NOW()`);
+        }
+      }
+
+      if (data.category !== undefined) {
+        updates.push(`category = $${paramIndex++}`);
+        values.push(data.category);
+      }
+
+      if (data.assigneeId !== undefined) {
+        updates.push(`assignee_id = $${paramIndex++}`);
+        values.push(data.assigneeId);
+      }
+
+      updates.push(`updated_at = NOW()`);
+      values.push(ticketId);
+
+      // 执行更新
+      if (updates.length > 0) {
+        await client.query(
+          `UPDATE tickets SET ${updates.join(', ')} WHERE id = $${paramIndex}`,
+          values
+        );
+      }
+
+      // 更新标签
+      if (data.tags !== undefined) {
+        // 删除现有标签
+        await client.query('DELETE FROM ticket_tags WHERE ticket_id = $1', [ticketId]);
+
+        // 添加新标签
+        for (const tag of data.tags) {
+          await client.query(
+            'INSERT INTO ticket_tags (ticket_id, tag) VALUES ($1, $2)',
+            [ticketId, tag]
+          );
+        }
+      }
+
+      // 记录活动
+      const changes = this.getChanges(oldTicket, data);
+      if (Object.keys(changes).length > 0) {
+        await client.query(
+          `INSERT INTO ticket_activities (
+            ticket_id, user_id, action, details, created_at
+          )
+          VALUES ($1, $2, 'updated', $3, NOW())`,
+          [ticketId, userId, JSON.stringify(changes)]
+        );
+      }
+
+      await client.query('COMMIT');
+
+      // 清除缓存
+      await cacheDel(`ticket:${ticketId}`);
+      await cacheDel('tickets:list:*');
+
+      logger.info('Ticket updated', { ticketId, userId, changes });
+
+      return await this.getTicketById(ticketId);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      logger.error('Failed to update ticket', { error, ticketId, data });
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  // 删除工单（软删除）
+  static async deleteTicket(ticketId: string, userId: string): Promise<void> {
+    try {
+      const result = await pool.query(
+        `UPDATE tickets 
+        SET deleted_at = NOW(), deleted_by = $1, updated_at = NOW()
+        WHERE id = $2 AND deleted_at IS NULL
+        RETURNING id`,
+        [userId, ticketId]
+      );
+
+      if (result.rows.length === 0) {
+        throw AppError.notFound('Ticket not found', 'TICKET_NOT_FOUND');
+      }
+
+      // 记录活动
+      await pool.query(
+        `INSERT INTO ticket_activities (
+          ticket_id, user_id, action, created_at
+        )
+        VALUES ($1, $2, 'deleted', NOW())`,
+        [ticketId, userId]
+      );
+
+      // 清除缓存
+      await cacheDel(`ticket:${ticketId}`);
+      await cacheDel('tickets:list:*');
+
+      logger.info('Ticket deleted', { ticketId, userId });
+    } catch (error) {
+      logger.error('Failed to delete ticket', { error, ticketId });
+      throw error;
+    }
+  }
+
+  // 获取工单列表
+  static async getTickets(
+    filters: TicketFilters = {},
+    page: number = 1,
+    pageSize: number = 20,
+    sortBy: string = 'created_at',
+    sortOrder: 'ASC' | 'DESC' = 'DESC'
+  ): Promise<{ tickets: any[]; total: number; page: number; pageSize: number }> {
+    try {
+      // 构建查询条件
+      const conditions: string[] = ['t.deleted_at IS NULL'];
+      const params: any[] = [];
+      let paramIndex = 1;
+
+      if (filters.status) {
+        conditions.push(`t.status = $${paramIndex++}`);
+        params.push(filters.status);
+      }
+
+      if (filters.priority) {
+        conditions.push(`t.priority = $${paramIndex++}`);
+        params.push(filters.priority);
+      }
+
+      if (filters.category) {
+        conditions.push(`t.category = $${paramIndex++}`);
+        params.push(filters.category);
+      }
+
+      if (filters.assigneeId) {
+        conditions.push(`t.assignee_id = $${paramIndex++}`);
+        params.push(filters.assigneeId);
+      }
+
+      if (filters.customerId) {
+        conditions.push(`t.customer_id = $${paramIndex++}`);
+        params.push(filters.customerId);
+      }
+
+      if (filters.search) {
+        conditions.push(`(t.title ILIKE $${paramIndex} OR t.description ILIKE $${paramIndex})`);
+        params.push(`%${filters.search}%`);
+        paramIndex++;
+      }
+
+      if (filters.createdAfter) {
+        conditions.push(`t.created_at >= $${paramIndex++}`);
+        params.push(filters.createdAfter);
+      }
+
+      if (filters.createdBefore) {
+        conditions.push(`t.created_at <= $${paramIndex++}`);
+        params.push(filters.createdBefore);
+      }
+
+      const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+      // 获取总数
+      const countResult = await pool.query(
+        `SELECT COUNT(*) FROM tickets t ${whereClause}`,
+        params
+      );
+      const total = parseInt(countResult.rows[0].count, 10);
+
+      // 获取数据
+      const offset = (page - 1) * pageSize;
+      params.push(pageSize, offset);
+
+      const allowedSortColumns = ['created_at', 'updated_at', 'priority', 'status', 'ticket_number'];
+      const sortColumn = allowedSortColumns.includes(sortBy) ? sortBy : 'created_at';
+
+      const result = await pool.query(
+        `SELECT 
+          t.*,
+          json_build_object(
+            'id', c.id,
+            'name', c.name,
+            'email', c.email
+          ) as customer,
+          json_build_object(
+            'id', a.id,
+            'name', CONCAT(a.first_name, ' ', a.last_name)
+          ) as assignee,
+          ARRAY_AGG(DISTINCT tt.tag) FILTER (WHERE tt.tag IS NOT NULL) as tags
+        FROM tickets t
+        LEFT JOIN customers c ON t.customer_id = c.id
+        LEFT JOIN users a ON t.assignee_id = a.id
+        LEFT JOIN ticket_tags tt ON t.id = tt.ticket_id
+        ${whereClause}
+        GROUP BY t.id, c.id, a.id
+        ORDER BY t.${sortColumn} ${sortOrder}
+        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+        params
+      );
+
+      return {
+        tickets: result.rows,
+        total,
+        page,
+        pageSize,
+      };
+    } catch (error) {
+      logger.error('Failed to get tickets', { error, filters });
+      throw error;
+    }
+  }
+
+  // 添加工单消息
+  static async addTicketMessage(
+    ticketId: string,
+    userId: string,
+    message: string,
+    isInternal: boolean = false
+  ): Promise<any> {
+    const client = await pool.connect();
+    
+    try {
+      await client.query('BEGIN');
+
+      // 检查工单是否存在
+      const ticketCheck = await client.query(
+        'SELECT id FROM tickets WHERE id = $1 AND deleted_at IS NULL',
+        [ticketId]
+      );
+
+      if (ticketCheck.rows.length === 0) {
+        throw AppError.notFound('Ticket not found', 'TICKET_NOT_FOUND');
+      }
+
+      // 添加消息
+      const messageId = crypto.randomUUID();
+      const result = await client.query(
+        `INSERT INTO ticket_messages (
+          id, ticket_id, user_id, message, is_internal, created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, NOW())
+        RETURNING *`,
+        [messageId, ticketId, userId, message, isInternal]
+      );
+
+      // 更新工单的最后活动时间
+      await client.query(
+        'UPDATE tickets SET updated_at = NOW() WHERE id = $1',
+        [ticketId]
+      );
+
+      // 记录活动
+      await client.query(
+        `INSERT INTO ticket_activities (
+          ticket_id, user_id, action, details, created_at
+        )
+        VALUES ($1, $2, 'message_added', $3, NOW())`,
+        [ticketId, userId, JSON.stringify({ isInternal, messageLength: message.length })]
+      );
+
+      await client.query('COMMIT');
+
+      // 清除缓存
+      await cacheDel(`ticket:${ticketId}`);
+
+      logger.info('Ticket message added', { ticketId, userId, messageId });
+
+      return result.rows[0];
+    } catch (error) {
+      await client.query('ROLLBACK');
+      logger.error('Failed to add ticket message', { error, ticketId });
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  // 生成工单编号
+  private static async generateTicketNumber(): Promise<string> {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    
+    // 获取当月的工单计数
+    const key = `ticket:counter:${year}${month}`;
+    const counter = await redis.incr(key);
+    
+    // 设置过期时间（下个月1号）
+    const expireAt = new Date(year, date.getMonth() + 1, 1);
+    await redis.expireat(key, Math.floor(expireAt.getTime() / 1000));
+    
+    return `TK${year}${month}${String(counter).padStart(6, '0')}`;
+  }
+
+  // 获取变更内容
+  private static getChanges(oldTicket: any, newData: UpdateTicketDTO): Record<string, any> {
+    const changes: Record<string, any> = {};
+
+    if (newData.title && newData.title !== oldTicket.title) {
+      changes.title = { old: oldTicket.title, new: newData.title };
+    }
+
+    if (newData.priority && newData.priority !== oldTicket.priority) {
+      changes.priority = { old: oldTicket.priority, new: newData.priority };
+    }
+
+    if (newData.status && newData.status !== oldTicket.status) {
+      changes.status = { old: oldTicket.status, new: newData.status };
+    }
+
+    if (newData.category && newData.category !== oldTicket.category) {
+      changes.category = { old: oldTicket.category, new: newData.category };
+    }
+
+    if (newData.assigneeId && newData.assigneeId !== oldTicket.assignee_id) {
+      changes.assigneeId = { old: oldTicket.assignee_id, new: newData.assigneeId };
+    }
+
+    return changes;
+  }
+
+  // 获取工单统计
+  static async getTicketStats(userId?: string): Promise<any> {
+    try {
+      const cacheKey = userId ? `ticket:stats:${userId}` : 'ticket:stats:all';
+      const cached = await cacheGet(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      const userCondition = userId ? 'AND assignee_id = $1' : '';
+      const params = userId ? [userId] : [];
+
+      const result = await pool.query(
+        `SELECT
+          COUNT(*) FILTER (WHERE status = 'open') as open_count,
+          COUNT(*) FILTER (WHERE status = 'in_progress') as in_progress_count,
+          COUNT(*) FILTER (WHERE status = 'resolved') as resolved_count,
+          COUNT(*) FILTER (WHERE status = 'closed') as closed_count,
+          COUNT(*) FILTER (WHERE priority = 'urgent') as urgent_count,
+          COUNT(*) FILTER (WHERE priority = 'high') as high_priority_count,
+          AVG(EXTRACT(EPOCH FROM (resolved_at - created_at)) / 3600) 
+            FILTER (WHERE resolved_at IS NOT NULL) as avg_resolution_time_hours,
+          COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE) as today_count,
+          COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE - INTERVAL '7 days') as week_count
+        FROM tickets
+        WHERE deleted_at IS NULL ${userCondition}`,
+        params
+      );
+
+      const stats = result.rows[0];
+
+      // 缓存结果
+      await cacheSet(cacheKey, stats, 300); // 5分钟
+
+      return stats;
+    } catch (error) {
+      logger.error('Failed to get ticket stats', { error, userId });
+      throw error;
+    }
+  }
+}
+
+```
+```typescript
+// src/routes/ticket.routes.ts - 工单路由
+import { Router, Request, Response } from 'express';
+import { TicketService } from '../services/ticket.service';
+import { authenticate, authorize } from '../middleware/auth.middleware';
+import { asyncHandler } from '../middleware/error-handler';
+import { body, query, validationResult } from 'express-validator';
+import { AppError } from '../middleware/error-handler';
+
+const router = Router();
+
+// 所有路由都需要认证
+router.use(authenticate);
+
+// 创建工单
+router.post(
+  '/',
+  [
+    body('title').trim().notEmpty().withMessage('Title is required'),
+    body('description').trim().notEmpty().withMessage('Description is required'),
+    body('priority')
+      .isIn(['low', 'medium', 'high', 'urgent'])
+      .withMessage('Invalid priority'),
+    body('category').trim().notEmpty().withMessage('Category is required'),
+    body('customerId').optional().isUUID().withMessage('Invalid customer ID'),
+    body('assigneeId').optional().isUUID().withMessage('Invalid assignee ID'),
+    body('tags').optional().isArray().withMessage('Tags must be an array'),
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      throw AppError.badRequest('Validation failed', 'VALIDATION_ERROR', errors.array());
+    }
+
+    const ticket = await TicketService.createTicket(req.body, req.user!.userId);
+
+    res.status(201).json({
+      success: true,
+      data: ticket,
+    });
+  })
+);
+
+// 获取工单列表
+router.get(
+  '/',
+  [
+    query('page').optional().isInt({ min: 1 }).toInt(),
+    query('pageSize').optional().isInt({ min: 1, max: 100 }).toInt(),
+    query('sortBy').optional().isIn(['created_at', 'updated_at', 'priority', 'status']),
+    query('sortOrder').optional().isIn(['ASC', 'DESC']),
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      throw AppError.badRequest('Validation failed', 'VALIDATION_ERROR', errors.array());
+    }
+
+    const filters = {
+      status: req.query.status as string,
+      priority: req.query.priority as string,
+      category: req.query.category as string,
+      assigneeId: req.query.assigneeId as string,
+      customerId: req.query.customerId as string,
+      search: req.query.search as string,
+    };
+
+    const page = parseInt(req.query.page as string) || 1;
+    const pageSize = parseInt(req.query.pageSize as string) || 20;
+    const sortBy = (req.query.sortBy as string) || 'created_at';
+    const sortOrder = (req.query.sortOrder as 'ASC' | 'DESC') || 'DESC';
+
+    const result = await TicketService.getTickets(filters, page, pageSize, sortBy, sortOrder);
+
+    res.status(200).json({
+      success: true,
+      data: result.tickets,
+      pagination: {
+        total: result.total,
+        page: result.page,
+        pageSize: result.pageSize,
+        totalPages: Math.ceil(result.total / result.pageSize),
+      },
+    });
+  })
+);
+
+// 获取工单详情
+router.get(
+  '/:ticketId',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { ticketId } = req.params;
+    const ticket = await TicketService.getTicketById(ticketId);
+
+    res.status(200).json({
+      success: true,
+      data: ticket,
+    });
+  })
+);
+
+// 更新工单
+router.patch(
+  '/:ticketId',
+  [
+    body('title').optional().trim().notEmpty(),
+    body('description').optional().trim().notEmpty(),
+    body('priority').optional().isIn(['low', 'medium', 'high', 'urgent']),
+    body('status').optional().isIn(['open', 'in_progress', 'resolved', 'closed']),
+    body('category').optional().trim().notEmpty(),
+    body('assigneeId').optional().isUUID(),
+    body('tags').optional().isArray(),
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      throw AppError.badRequest('Validation failed', 'VALIDATION_ERROR', errors.array());
+    }
+
+    const { ticketId } = req.params;
+    const ticket = await TicketService.updateTicket(ticketId, req.body, req.user!.userId);
+
+    res.status(200).json({
+      success: true,
+      data: ticket,
+    });
+  })
+);
+
+// 删除工单
+router.delete(
+  '/:ticketId',
+  authorize('admin', 'manager'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { ticketId } = req.params;
+    await TicketService.deleteTicket(ticketId, req.user!.userId);
+
+    res.status(200).json({
+      success: true,
+      message: 'Ticket deleted successfully',
+    });
+  })
+);
+
+// 添加工单消息
+router.post(
+  '/:ticketId/messages',
+  [
+    body('message').trim().notEmpty().withMessage('Message is required'),
+    body('isInternal').optional().isBoolean(),
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      throw AppError.badRequest('Validation failed', 'VALIDATION_ERROR', errors.array());
+    }
+
+    const { ticketId } = req.params;
+    const { message, isInternal } = req.body;
+
+    const ticketMessage = await TicketService.addTicketMessage(
+      ticketId,
+      req.user!.userId,
+      message,
+      isInternal || false
+    );
+
+    res.status(201).json({
+      success: true,
+      data: ticketMessage,
+    });
+  })
+);
+
+// 获取工单统计
+router.get(
+  '/stats/overview',
+  asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.query.userId as string;
+    const stats = await TicketService.getTicketStats(userId);
+
+    res.status(200).json({
+      success: true,
+      data: stats,
+    });
+  })
+);
+
+export default router;
+
+```
+```sql
+-- 数据库架构 (database/schema.sql)
+-- 用户表
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  first_name VARCHAR(100) NOT NULL,
+  last_name VARCHAR(100) NOT NULL,
+  display_name VARCHAR(200),
+  avatar_url TEXT,
+  status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'locked', 'suspended')),
+  locked_at TIMESTAMP,
+  locked_reason TEXT,
+  last_login_at TIMESTAMP,
+  last_login_ip VARCHAR(45),
+  login_count INTEGER DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMP
+);
+
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_status ON users(status);
+CREATE INDEX idx_users_created_at ON users(created_at);
+
+-- 角色表
+CREATE TABLE IF NOT EXISTS roles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  role_name VARCHAR(50) UNIQUE NOT NULL,
+  description TEXT,
+  permissions JSONB DEFAULT '[]',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- 插入默认角色
+INSERT INTO roles (role_name, description, permissions) VALUES
+  ('admin', 'System Administrator', '["*"]'),
+  ('manager', 'Manager', '["tickets:*", "orders:*", "reports:read"]'),
+  ('agent', 'Support Agent', '["tickets:read", "tickets:update", "tickets:message"]'),
+  ('user', 'Regular User', '["tickets:read", "tickets:create"]')
+ON CONFLICT (role_name) DO NOTHING;
+
+-- 用户角色关联表
+CREATE TABLE IF NOT EXISTS user_roles (
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  role_id UUID REFERENCES roles(id) ON DELETE CASCADE,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, role_id)
+);
+
+CREATE INDEX idx_user_roles_user_id ON user_roles(user_id);
+CREATE INDEX idx_user_roles_role_id ON user_roles(role_id);
+
+-- 客户表
+CREATE TABLE IF NOT EXISTS customers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR(200) NOT NULL,
+  email VARCHAR(255),
+  phone VARCHAR(50),
+  company VARCHAR(200),
+  address TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMP
+);
+
+CREATE INDEX idx_customers_email ON customers(email);
+CREATE INDEX idx_customers_name ON customers(name);
+
+-- 工单表
+CREATE TABLE IF NOT EXISTS tickets (
+  id UUID PRIMARY KEY,
+  ticket_number VARCHAR(50) UNIQUE NOT NULL,
+  title VARCHAR(500) NOT NULL,
+  description TEXT NOT NULL,
+  priority VARCHAR(20) NOT NULL CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
+  status VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'in_progress', 'resolved', 'closed')),
+  category VARCHAR(100) NOT NULL,
+  customer_id UUID REFERENCES customers(id),
+  assignee_id UUID REFERENCES users(id),
+  creator_id UUID REFERENCES users(id) NOT NULL,
+  resolved_at TIMESTAMP,
+  closed_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMP,
+  deleted_by UUID REFERENCES users(id)
+);
+
+CREATE INDEX idx_tickets_number ON tickets(ticket_number);
+CREATE INDEX idx_tickets_status ON tickets(status);
+CREATE INDEX idx_tickets_priority ON tickets(priority);
+CREATE INDEX idx_tickets_customer ON tickets(customer_id);
+CREATE INDEX idx_tickets_assignee ON tickets(assignee_id);
+CREATE INDEX idx_tickets_creator ON tickets(creator_id);
+CREATE INDEX idx_tickets_created_at ON tickets(created_at);
+
+-- 工单标签表
+CREATE TABLE IF NOT EXISTS ticket_tags (
+  ticket_id UUID REFERENCES tickets(id) ON DELETE CASCADE,
+  tag VARCHAR(50) NOT NULL,
+  PRIMARY KEY (ticket_id, tag)
+);
+
+CREATE INDEX idx_ticket_tags_tag ON ticket_tags(tag);
+
+-- 工单消息表
+CREATE TABLE IF NOT EXISTS ticket_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticket_id UUID REFERENCES tickets(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id),
+  message TEXT NOT NULL,
+  is_internal BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_ticket_messages_ticket ON ticket_messages(ticket_id);
+CREATE INDEX idx_ticket_messages_created_at ON ticket_messages(created_at);
+
+-- 工单附件表
+CREATE TABLE IF NOT EXISTS ticket_attachments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticket_id UUID REFERENCES tickets(id) ON DELETE CASCADE,
+  file_url TEXT NOT NULL,
+  file_name VARCHAR(255),
+  file_size INTEGER,
+  mime_type VARCHAR(100),
+  uploaded_by UUID REFERENCES users(id),
+  uploaded_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_ticket_attachments_ticket ON ticket_attachments(ticket_id);
+
+-- 工单活动日志表
+CREATE TABLE IF NOT EXISTS ticket_activities (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticket_id UUID REFERENCES tickets(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id),
+  action VARCHAR(50) NOT NULL,
+  details JSONB,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_ticket_activities_ticket ON ticket_activities(ticket_id);
+CREATE INDEX idx_ticket_activities_created_at ON ticket_activities(created_at);
+
+-- 用户登录历史表
+CREATE TABLE IF NOT EXISTS user_login_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  login_type VARCHAR(50) NOT NULL,
+  success BOOLEAN NOT NULL,
+  ip_address VARCHAR(45),
+  user_agent TEXT,
+  device_type VARCHAR(50),
+  browser VARCHAR(100),
+  os VARCHAR(100),
+  country VARCHAR(100),
+  region VARCHAR(100),
+  city VARCHAR(100),
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_login_history_user ON user_login_history(user_id);
+CREATE INDEX idx_login_history_created_at ON user_login_history(created_at);
+
+-- 用户活动日志表
+CREATE TABLE IF NOT EXISTS user_activity_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  action VARCHAR(100) NOT NULL,
+  resource_type VARCHAR(100),
+  resource_id UUID,
+  ip_address VARCHAR(45),
+  user_agent TEXT,
+  details JSONB,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_activity_log_user ON user_activity_log(user_id);
+CREATE INDEX idx_activity_log_action ON user_activity_log(action);
+CREATE INDEX idx_activity_log_created_at ON user_activity_log(created_at);
+
+-- 安全警报表
+CREATE TABLE IF NOT EXISTS security_alerts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id),
+  alert_type VARCHAR(100) NOT NULL,
+  severity VARCHAR(20) NOT NULL CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+  details JSONB,
+  resolved BOOLEAN DEFAULT FALSE,
+  resolved_at TIMESTAMP,
+  resolved_by UUID REFERENCES users(id),
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_security_alerts_user ON security_alerts(user_id);
+CREATE INDEX idx_security_alerts_type ON security_alerts(alert_type);
+CREATE INDEX idx_security_alerts_severity ON security_alerts(severity);
+CREATE INDEX idx_security_alerts_resolved ON security_alerts(resolved);
+
+```
+依赖模块:
+- express-validator (输入验证)
+- uuid (生成唯一ID)
+预期影响:
+- 实现完整的工单管理功能
+- 提供灵活的查询和筛选能力
+- 支持工单生命周期管理
+- 实现活动追踪和审计日志
+- 为后续功能模块提供参考实现
+---
+## Phase 2: 短期目标（第3-8周）
+### Task 2.1: 系统监控和性能优化
+描述: 集成 Prometheus 和 Grafana 实现全面的系统监控，建立性能指标收集和可视化系统。
+技术建议:
+1. 使用 prom-client 收集应用指标
+2. 集成 Prometheus 进行指标存储
+3. 配置 Grafana 实现可视化监控
+4. 建立告警规则和通知机制
+5. 实现自定义业务指标监控
+代码实现:
+```typescript
+// src/services/metrics.service.ts - 指标收集服务
+import client from 'prom-client';
+import { logger } from '../config/logger';
+
+export class MetricsService {
+  private static registry: client.Registry;
+  private static httpRequestDuration: client.Histogram;
+  private static httpRequestTotal: client.Counter;
+  private static dbQueryDuration: client.Histogram;
+  private static dbConnectionPool: client.Gauge;
+  private static cacheHitRate: client.Gauge;
+  private static activeUsers: client.Gauge;
+  private static ticketMetrics: {
+    total: client.Gauge;
+    byStatus: client.Gauge;
+    byPriority: client.Gauge;
+    avgResolutionTime: client.Gauge;
+  };
+
+  static initialize(): void {
+    // 创建注册表
+    this.registry = new client.Registry();
+
+    // 设置默认标签
+    this.registry.setDefaultLabels({
+      app: 'yanyu-cloud',
+      environment: process.env.NODE_ENV || 'development',
+    });
+
+    // 收集默认指标
+    client.collectDefaultMetrics({
+      register: this.registry,
+      prefix: 'yanyu_',
+    });
+
+    // HTTP 请求持续时间
+    this.httpRequestDuration = new client.Histogram({
+      name: 'http_request_duration_seconds',
+      help: 'Duration of HTTP requests in seconds',
+      labelNames: ['method', 'route', 'status_code'],
+      buckets: [0.1, 0.5, 1, 2, 5, 10],
+    });
+    this.registry.registerMetric(this.httpRequestDuration);
+
+    // HTTP 请求总数
+    this.httpRequestTotal = new client.Counter({
+      name: 'http_requests_total',
+      help: 'Total number of HTTP requests',
+      labelNames: ['method', 'route', 'status_code'],
+    });
+    this.registry.registerMetric(this.httpRequestTotal);
+
+    // 数据库查询持续时间
+    this.dbQueryDuration = new client.Histogram({
+      name: 'db_query_duration_seconds',
+      help: 'Duration of database queries in seconds',
+      labelNames: ['operation', 'table'],
+      buckets: [0.01, 0.05, 0.1, 0.5, 1, 2, 5],
+    });
+    this.registry.registerMetric(this.dbQueryDuration);
+
+    // 数据库连接池
+    this.dbConnectionPool = new client.Gauge({
+      name: 'db_connection_pool_size',
+      help: 'Database connection pool size',
+      labelNames: ['state'],
+    });
+    this.registry.registerMetric(this.dbConnectionPool);
+
+    // 缓存命中率
+    this.cacheHitRate = new client.Gauge({
+      name: 'cache_hit_rate',
+      help: 'Cache hit rate percentage',
+      labelNames: ['cache_type'],
+    });
+    this.registry.registerMetric(this.cacheHitRate);
+
+    // 活跃用户数
+    this.activeUsers = new client.Gauge({
+      name: 'active_users_total',
+      help: 'Number of active users',
+    });
+    this.registry.registerMetric(this.activeUsers);
+
+    // 工单指标
+    this.ticketMetrics = {
+      total: new client.Gauge({
+        name: 'tickets_total',
+        help: 'Total number of tickets',
+      }),
+      byStatus: new client.Gauge({
+        name: 'tickets_by_status',
+        help: 'Number of tickets by status',
+        labelNames: ['status'],
+      }),
+      byPriority: new client.Gauge({
+        name: 'tickets_by_priority',
+        help: 'Number of tickets by priority',
+        labelNames: ['priority'],
+      }),
+      avgResolutionTime: new client.Gauge({
+        name: 'tickets_avg_resolution_time_hours',
+        help: 'Average ticket resolution time in hours',
+      }),
+    };
+
+    Object.values(this.ticketMetrics).forEach(metric => {
+      this.registry.registerMetric(metric);
+    });
+
+    logger.info('Metrics service initialized');
+  }
+
+  // 记录 HTTP 请求
+  static recordHttpRequest(
+    method: string,
+    route: string,
+    statusCode: number,
+    duration: number
+  ): void {
+    this.httpRequestDuration.observe(
+      { method, route, status_code: statusCode },
+      duration / 1000
+    );
+    this.httpRequestTotal.inc({ method, route, status_code: statusCode });
+  }
+
+  // 记录数据库查询
+  static recordDbQuery(
+    operation: string,
+    table: string,
+    duration: number
+  ): void {
+    this.dbQueryDuration.observe(
+      { operation, table },
+      duration / 1000
+    );
+  }
+
+  // 更新数据库连接池指标
+  static updateDbConnectionPool(total: number, idle: number, active: number): void {
+    this.dbConnectionPool.set({ state: 'total' }, total);
+    this.dbConnectionPool.set({ state: 'idle' }, idle);
+    this.dbConnectionPool.set({ state: 'active' }, active);
+  }
+
+  // 更新缓存命中率
+  static updateCacheHitRate(cacheType: string, hitRate: number): void {
+    this.cacheHitRate.set({ cache_type: cacheType }, hitRate);
+  }
+
+  // 更新活跃用户数
+  static updateActiveUsers(count: number): void {
+    this.activeUsers.set(count);
+  }
+
+  // 更新工单指标
+  static updateTicketMetrics(stats: {
+    total: number;
+    byStatus: Record<string, number>;
+    byPriority: Record<string, number>;
+    avgResolutionTime: number;
+  }): void {
+    this.ticketMetrics.total.set(stats.total);
+
+    Object.entries(stats.byStatus).forEach(([status, count]) => {
+      this.ticketMetrics.byStatus.set({ status }, count);
+    });
+
+    Object.entries(stats.byPriority).forEach(([priority, count]) => {
+      this.ticketMetrics.byPriority.set({ priority }, count);
+    });
+
+    this.ticketMetrics.avgResolutionTime.set(stats.avgResolutionTime);
+  }
+
+  // 获取指标
+  static async getMetrics(): Promise<string> {
+    return await this.registry.metrics();
+  }
+
+  // 增加计数器
+  static incrementCounter(name: string, labels: Record<string, string> = {}): void {
+    const counter = this.registry.getSingleMetric(name) as client.Counter;
+    if (counter) {
+      counter.inc(labels);
+    }
+  }
+
+  // 设置仪表
+  static setGauge(name: string, value: number, labels: Record<string, string> = {}): void {
+    const gauge = this.registry.getSingleMetric(name) as client.Gauge;
+    if (gauge) {
+      gauge.set(labels, value);
+    }
+  }
+
+  // 观察直方图
+  static observeHistogram(
+    name: string,
+    value: number,
+    labels: Record<string, string> = {}
+  ): void {
+    const histogram = this.registry.getSingleMetric(name) as client.Histogram;
+    if (histogram) {
+      histogram.observe(labels, value);
+    }
+  }
+}
+
+```
+```typescript
+// src/middleware/metrics.middleware.ts - 指标收集中间件
+import { Request, Response, NextFunction } from 'express';
+import { MetricsService } from '../services/metrics.service';
+
+export const metricsMiddleware = (req: Request, res: Response, next: NextFunction) => {
+  const startTime = Date.now();
+
+  // 监听响应完成
+  res.on('finish', () => {
+    const duration = Date.now() - startTime;
+    const route = req.route?.path || req.path;
+
+    MetricsService.recordHttpRequest(
+      req.method,
+      route,
+      res.statusCode,
+      duration
+    );
+  });
+
+  next();
+};
+
+```
+```typescript
+// src/routes/metrics.routes.ts - 指标端点
+import { Router, Request, Response } from 'express';
+import { MetricsService } from '../services/metrics.service';
+import { asyncHandler } from '../middleware/error-handler';
+
+const router = Router();
+
+// Prometheus 指标端点
+router.get(
+  '/metrics',
+  asyncHandler(async (req: Request, res: Response) => {
+    res.set('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+    const metrics = await MetricsService.getMetrics();
+    res.send(metrics);
+  })
+);
+
+export default router;
+
+```
+```yaml
+# prometheus.yml - Prometheus 配置
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'yanyu-cloud-prod'
+    replica: '1'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - 'alertmanager:9093'
+
+rule_files:
+  - '/etc/prometheus/rules/*.yml'
+
+scrape_configs:
+  - job_name: 'yanyu-cloud-api'
+    static_configs:
+      - targets: ['api:3001']
+        labels:
+          service: 'api'
+          environment: 'production'
+    metrics_path: '/api/metrics'
+    scrape_interval: 10s
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+        labels:
+          service: 'database'
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+        labels:
+          service: 'cache'
+
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: 'node'
+
+```
+```yaml
+# prometheus/rules/alerts.yml - 告警规则
+groups:
+  - name: yanyu_cloud_alerts
+    interval: 30s
+    rules:
+      # API 响应时间告警
+      - alert: HighAPIResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API response time"
+          description: "95th percentile response time is above 2 seconds (current value: {{ $value }}s)"
+
+      # API 错误率告警
+      - alert: HighAPIErrorRate
+        expr: rate(http_requests_total{status_code=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High API error rate"
+          description: "Error rate is above 5% (current value: {{ $value | humanizePercentage }})"
+
+      # 数据库连接池耗尽
+      - alert: DatabaseConnectionPoolExhausted
+        expr: db_connection_pool_size{state="idle"} < 2
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Database connection pool almost exhausted"
+          description: "Only {{ $value }} idle connections remaining"
+
+      # 高内存使用率
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is above 85% (current value: {{ $value | humanizePercentage }})"
+
+      # 高 CPU 使用率
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is above 80% (current value: {{ $value }}%)"
+
+      # 磁盘空间不足
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) < 0.15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space"
+          description: "Disk space is below 15% (current value: {{ $value | humanizePercentage }})"
+
+      # Redis 连接失败
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "Redis has been down for more than 1 minute"
+
+      # PostgreSQL 连接失败
+      - alert: PostgresDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL has been down for more than 1 minute"
+
+      # 工单积压告警
+      - alert: HighTicketBacklog
+        expr: tickets_by_status{status="open"} > 100
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High ticket backlog"
+          description: "More than 100 open tickets (current value: {{ $value }})"
+
+      # 平均工单解决时间过长
+      - alert: SlowTicketResolution
+        expr: tickets_avg_resolution_time_hours > 48
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow ticket resolution"
+          description: "Average ticket resolution time is above 48 hours (current value: {{ $value }} hours)"
+
+```
+```json
+// grafana/dashboards/system-overview.json - Grafana 仪表盘配置（简化版）
+{
+  "dashboard": {
+    "title": "YanYu Cloud³ System Overview",
+    "tags": ["yanyu-cloud", "overview"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "title": "API Request Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(http_requests_total[5m])",
+            "legendFormat": "{{method}} {{route}}"
+          }
+        ]
+      },
+      {
+        "title": "API Response Time (95th percentile)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "{{method}} {{route}}"
+          }
+        ]
+      },
+      {
+        "title": "Database Query Duration",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(db_query_duration_seconds_sum[5m]) / rate(db_query_duration_seconds_count[5m])",
+            "legendFormat": "{{operation}} on {{table}}"
+          }
+        ]
+      },
+      {
+        "title": "Active Tickets by Status",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "tickets_by_status",
+            "legendFormat": "{{status}}"
+          }
+        ]
+      },
+      {
+        "title": "Memory Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "process_resident_memory_bytes",
+            "legendFormat": "Memory"
+          }
+        ]
+      },
+      {
+        "title": "CPU Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(process_cpu_seconds_total[5m]) * 100",
+            "legendFormat": "CPU"
+          }
+        ]
+      }
+    ]
+  }
+}
+
+```
+```yaml
+# docker-compose.monitoring.yml - 监控服务配置
+version: '3.8'
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: yanyu-prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/rules:/etc/prometheus/rules
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    ports:
+      - '9090:9090'
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: yanyu-grafana
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - '3000:3000'
+    networks:
+      - monitoring
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: yanyu-alertmanager
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - alertmanager-data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    ports:
+      - '9093:9093'
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: yanyu-node-exporter
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    ports:
+      - '9100:9100'
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: yanyu-postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}?sslmode=disable"
+    ports:
+      - '9187:9187'
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: yanyu-redis-exporter
+    environment:
+      REDIS_ADDR: "redis:6379"
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+    ports:
+      - '9121:9121'
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+networks:
+  monitoring:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  alertmanager-data:
+
+```
+依赖模块:
+- prom-client (Prometheus 客户端)
+预期影响:
+- 实时监控系统健康状况
+- 快速发现和定位性能瓶颈
+- 提供数据驱动的优化决策支持
+- 建立主动告警机制，减少故障影响
+- 提升系统可观测性和运维效率
+---
+### Task 2.2: AI 功能增强
+描述: 扩展 AI 服务能力，实现智能分析、推荐系统和自动化处理功能。
+技术建议:
+1. 实现智能工单分类和优先级预测
+2. 开发智能回复推荐系统
+3. 实现情感分析和客户满意度预测
+4. 添加智能数据提取和表单填充
+5. 优化 token 使用和响应缓存
+代码实现:
+```typescript
+// src/services/ai/ticket-intelligence.service.ts - 工单智能服务
+import { OpenAI } from 'openai';
+import { logger } from '../../config/logger';
+import { redis, cacheGet, cacheSet } from '../../config/redis';
+import { AppError } from '../../middleware/error-handler';
+import crypto from 'crypto';
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+interface TicketAnalysis {
+  suggestedCategory: string;
+  suggestedPriority: 'low' | 'medium' | 'high' | 'urgent';
+  sentiment: 'positive' | 'neutral' | 'negative';
+  urgencyScore: number;
+  keyPhrases: string[];
+  suggestedTags: string[];
+  estimatedResolutionTime: number;
+}
+
+interface ReplyRecommendation {
+  reply: string;
+  confidence: number;
+  tone: 'professional' | 'friendly' | 'empathetic';
+  suggestedActions: string[];
+}
+
+export class TicketIntelligenceService {
+  // 分析工单内容
+  static async analyzeTicket(
+    title: string,
+    description: string,
+    customerHistory?: any[]
+  ): Promise<TicketAnalysis> {
+    try {
+      // 生成缓存键
+      const cacheKey = `ticket:analysis:${crypto
+        .createHash('md5')
+        .update(`${title}${description}`)
+        .digest('hex')}`;
+
+      // 尝试从缓存获取
+      const cached = await cacheGet<TicketAnalysis>(cacheKey);
+      if (cached) {
+        logger.debug('Ticket analysis cache hit', { cacheKey });
+        return cached;
+      }
+
+      // 构建分析提示词
+      const prompt = `
+请分析以下客户工单，提供详细的分类和优先级建议。
+
+工单标题：${title}
+
+工单描述：${description}
+
+${customerHistory && customerHistory.length > 0 ? `客户历史工单：\n${customerHistory.map(h => `- ${h.title} (${h.status})`).join('\n')}` : ''}
+
+请以JSON格式返回分析结果，包含以下字段：
+{
+  "suggestedCategory": "建议的分类（如：技术支持、账户问题、产品咨询等）",
+  "suggestedPriority": "建议的优先级（low/medium/high/urgent）",
+  "sentiment": "客户情绪（positive/neutral/negative）",
+  "urgencyScore": "紧急程度评分（0-100）",
+  "keyPhrases": ["关键短语1", "关键短语2"],
+  "suggestedTags": ["建议标签1", "建议标签2"],
+  "estimatedResolutionTime": 预计解决时间（小时）
+}
+`;
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: '你是一个专业的客户服务分析专家，擅长分析工单内容并提供准确的分类和优先级建议。',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: 0.3,
+        response_format: { type: 'json_object' },
+      });
+
+      const analysis = JSON.parse(response.choices[0].message.content || '{}');
+
+      // 缓存结果（24小时）
+      await cacheSet(cacheKey, analysis, 86400);
+
+      logger.info('Ticket analyzed successfully', {
+        suggestedCategory: analysis.suggestedCategory,
+        suggestedPriority: analysis.suggestedPriority,
+      });
+
+      return analysis;
+    } catch (error) {
+      logger.error('Ticket analysis failed', { error, title });
+      throw AppError.internal('Failed to analyze ticket', 'AI_ANALYSIS_ERROR');
+    }
+  }
+
+  // 生成智能回复推荐
+  static async recommendReply(
+    ticketTitle: string,
+    ticketDescription: string,
+    conversationHistory: Array<{ role: string; message: string }>,
+    customerProfile?: any
+  ): Promise<ReplyRecommendation> {
+    try {
+      // 构建对话历史
+      const conversationContext = conversationHistory
+        .map(msg => `${msg.role === 'customer' ? '客户' : '客服'}：${msg.message}`)
+        .join('\n');
+
+      const prompt = `
+作为专业的客户服务代表，请为以下工单生成合适的回复建议。
+
+工单标题：${ticketTitle}
+
+工单描述：${ticketDescription}
+
+对话历史：
+${conversationContext}
+
+${customerProfile ? `客户信息：\n- 客户类型：${customerProfile.type}\n- 历史工单数：${customerProfile.ticketCount}` : ''}
+
+请以JSON格式返回回复建议，包含以下字段：
+{
+  "reply": "建议的回复内容",
+  "confidence": 置信度（0-1），
+  "tone": "语气（professional/friendly/empathetic）",
+  "suggestedActions": ["建议的后续行动1", "建议的后续行动2"]
+}
+
+回复要求：
+1. 专业、清晰、易懂
+2. 直接回答客户问题
+3. 提供具体的解决方案或下一步行动
+4. 保持友好和同理心
+`;
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: '你是一个经验丰富的客户服务专家，擅长提供专业、友好且有帮助的回复。',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: 0.7,
+        response_format: { type: 'json_object' },
+      });
+
+      const recommendation = JSON.parse(response.choices[0].message.content || '{}');
+
+      logger.info('Reply recommendation generated', {
+        confidence: recommendation.confidence,
+        tone: recommendation.tone,
+      });
+
+      return recommendation;
+    } catch (error) {
+      logger.error('Reply recommendation failed', { error, ticketTitle });
+      throw AppError.internal('Failed to generate reply recommendation', 'AI_REPLY_ERROR');
+    }
+  }
+
+  // 情感分析
+  static async analyzeSentiment(text: string): Promise<{
+    sentiment: 'positive' | 'neutral' | 'negative';
+    score: number;
+    emotions: Record<string, number>;
+  }> {
+    try {
+      // 生成缓存键
+      const cacheKey = `sentiment:${crypto.createHash('md5').update(text).digest('hex')}`;
+
+      // 尝试从缓存获取
+      const cached = await cacheGet<any>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      const prompt = `
+请分析以下文本的情感，并以JSON格式返回结果：
+
+文本：${text}
+
+返回格式：
+{
+  "sentiment": "positive/neutral/negative",
+  "score": 情感评分（-1到1之间，-1最负面，1最正面），
+  "emotions": {
+    "joy": 喜悦程度（0-1），
+    "anger": 愤怒程度（0-1），
+    "sadness": 悲伤程度（0-1），
+    "fear": 恐惧程度（0-1），
+    "surprise": 惊讶程度（0-1）
+  }
+}
+`;
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: '你是一个情感分析专家，能够准确识别文本中的情感和情绪。',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
+      });
+
+      const analysis = JSON.parse(response.choices[0].message.content || '{}');
+
+      // 缓存结果（7天）
+      await cacheSet(cacheKey, analysis, 604800);
+
+      logger.debug('Sentiment analysis completed', {
+        sentiment: analysis.sentiment,
+        score: analysis.score,
+      });
+
+      return analysis;
+    } catch (error) {
+      logger.error('Sentiment analysis failed', { error });
+      throw AppError.internal('Failed to analyze sentiment', 'AI_SENTIMENT_ERROR');
+    }
+  }
+
+  // 智能数据提取
+  static async extractInformation(
+    text: string,
+    schema: Record<string, string>
+  ): Promise<Record<string, any>> {
+    try {
+      const schemaDescription = Object.entries(schema)
+        .map(([key, description]) => `- ${key}: ${description}`)
+        .join('\n');
+
+      const prompt = `
+从以下文本中提取指定的信息，并以JSON格式返回。
+
+文本：
+${text}
+
+需要提取的字段：
+${schemaDescription}
+
+返回格式：
+{
+  "字段名": "提取的值",
+  ...
+}
+
+注意：
+1. 如果无法从文本中提取某个字段，设置为null
+2. 尽可能提取准确的信息
+3. 对于日期，使用ISO 8601格式
+4. 对于数字，返回数值类型
+`;
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: '你是一个专业的信息提取专家，能够准确从文本中提取结构化信息。',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: 0.1,
+        response_format: { type: 'json_object' },
+      });
+
+      const extracted = JSON.parse(response.choices[0].message.content || '{}');
+
+      logger.info('Information extracted successfully', {
+        fieldsExtracted: Object.keys(extracted).length,
+      });
+
+      return extracted;
+    } catch (error) {
+      logger.error('Information extraction failed', { error });
+      throw AppError.internal('Failed to extract information', 'AI_EXTRACTION_ERROR');
+    }
+  }
+
+  // 预测客户满意度
+  static async predictSatisfaction(
+    ticketData: {
+      resolutionTime: number;
+      responseCount: number;
+      sentiment: string;
+      category: string;
+    }
+  ): Promise<{
+    satisfactionScore: number;
+    riskLevel: 'low' | 'medium' | 'high';
+    recommendations: string[];
+  }> {
+    try {
+      const prompt = `
+基于以下工单数据，预测客户满意度并提供改进建议：
+
+- 解决时间：${ticketData.resolutionTime}小时
+- 响应次数：${ticketData.responseCount}次
+- 客户情绪：${ticketData.sentiment}
+- 工单类别：${ticketData.category}
+
+请以JSON格式返回预测结果：
+{
+  "satisfactionScore": 满意度评分（0-100），
+  "riskLevel": "风险等级（low/medium/high）",
+  "recommendations": ["改进建议1", "改进建议2", "改进建议3"]
+}
+`;
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: '你是一个客户满意度分析专家，能够基于工单数据预测客户满意度并提供改进建议。',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: 0.3,
+        response_format: { type: 'json_object' },
+      });
+
+      const prediction = JSON.parse(response.choices[0].message.content || '{}');
+
+      logger.info('Satisfaction predicted', {
+        score: prediction.satisfactionScore,
+        riskLevel: prediction.riskLevel,
+      });
+
+      return prediction;
+    } catch (error) {
+      logger.error('Satisfaction prediction failed', { error });
+      throw AppError.internal('Failed to predict satisfaction', 'AI_PREDICTION_ERROR');
+    }
+  }
+
+  // 批量分类工单
+  static async batchClassifyTickets(
+    tickets: Array<{ id: string; title: string; description: string }>
+  ): Promise<Array<{ id: string; category: string; priority: string; confidence: number }>> {
+    try {
+      const ticketsText = tickets
+        .map((t, i) => `${i + 1}. ID: ${t.id}\n   标题：${t.title}\n   描述：${t.description}`)
+        .join('\n\n');
+
+      const prompt = `
+请对以下工单进行批量分类和优先级评估：
+
+${ticketsText}
+
+请以JSON数组格式返回分类结果：
+[
+  {
+    "id": "工单ID",
+    "category": "分类",
+    "priority": "优先级（low/medium/high/urgent）",
+    "confidence": 置信度（0-1）
+  },
+  ...
+]
+
+可用的分类：
+- 技术支持
+- 账户问题
+- 产品咨询
+- 功能请求
+- Bug报告
+- 计费问题
+- 其他
+`;
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: '你是一个专业的工单分类专家，能够准确快速地对工单进行分类和优先级评估。',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
+      });
+
+      const content = response.choices[0].message.content || '{"results": []}';
+      const parsed = JSON.parse(content);
+      const results = parsed.results || parsed;
+
+      logger.info('Batch classification completed', {
+        ticketCount: tickets.length,
+        resultsCount: results.length,
+      });
+
+      return Array.isArray(results) ? results : [];
+    } catch (error) {
+      logger.error('Batch classification failed', { error });
+      throw AppError.internal('Failed to classify tickets', 'AI_CLASSIFICATION_ERROR');
+    }
+  }
+}
+
+```
+```typescript
+// src/routes/ai.routes.ts - AI 功能路由
+import { Router, Request, Response } from 'express';
+import { TicketIntelligenceService } from '../services/ai/ticket-intelligence.service';
+import { authenticate, authorize } from '../middleware/auth.middleware';
+import { asyncHandler } from '../middleware/error-handler';
+import { body, validationResult } from 'express-validator';
+import { AppError } from '../middleware/error-handler';
+
+const router = Router();
+
+// 所有AI路由都需要认证
+router.use(authenticate);
+
+// 分析工单
+router.post(
+  '/analyze-ticket',
+  [
+    body('title').trim().notEmpty().withMessage('Title is required'),
+    body('description').trim().notEmpty().withMessage('Description is required'),
+    body('customerHistory').optional().isArray(),
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      throw AppError.badRequest('Validation failed', 'VALIDATION_ERROR', errors.array());
+    }
+
+    const { title, description, customerHistory } = req.body;
+
+    const analysis = await TicketIntelligenceService.analyzeTicket(
+      title,
+      description,
+      customerHistory
+    );
+
+    res.status(200).json({
+      success: true,
+      data: analysis,
+    });
+  })
+);
+
+// 生成回复推荐
+router.post(
+  '/recommend-reply',
+  [
+    body('ticketTitle').trim().notEmpty(),
+    body('ticketDescription').trim().notEmpty(),
+    body('conversationHistory').isArray().withMessage('Conversation history must be an array'),
+    body('customerProfile').optional().isObject(),
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      throw AppError.badRequest('Validation failed', 'VALIDATION_ERROR', errors.array());
+    }
+
+    const { ticketTitle, ticketDescription, conversationHistory, customerProfile } = req.body;
+
+    const recommendation = await TicketIntelligenceService.recommendReply(
+      ticketTitle,
+      ticketDescription,
+      conversationHistory,
+      customerProfile
+    );
+
+    res.status(200).json({
+      success: true,
+      data: recommendation,
+    });
+  })
+);
+
+// 情感分析
+router.post(
+  '/analyze-sentiment',
+  [body('text').trim().notEmpty().withMessage('Text is required')],
+  asyncHandler(async (req: Request, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      throw AppError.badRequest('Validation failed', 'VALIDATION_ERROR', errors.array());
+    }
+
+    const { text } = req.body;
+
+    const analysis = await TicketIntelligenceService.analyzeSentiment(text);
+
+    res.status(200).json({
+      success: true,
+      data: analysis,
+    });
+  })
+);
+
+// 智能信息提取
+router.post(
+  '/extract-information',
+  [
+    body('text').trim().notEmpty().withMessage('Text is required'),
+    body('schema').isObject().withMessage('Schema must be an object'),
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      throw AppError.badRequest('Validation failed', 'VALIDATION_ERROR', errors.array());
+    }
+
+    const { text, schema } = req.body;
+
+    const extracted = await TicketIntelligenceService.extractInformation(text, schema);
+
+    res.status(200).json({
+      success: true,
+      data: extracted,
+    });
+  })
+);
+
+// 预测客户满意度
+router.post(
+  '/predict-satisfaction',
+  [
+    body('resolutionTime').isNumeric(),
+    body('responseCount').isInt(),
+    body('sentiment').isIn(['positive', 'neutral', 'negative']),
+    body('category').trim().notEmpty(),
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      throw AppError.badRequest('Validation failed', 'VALIDATION_ERROR', errors.array());
+    }
+
+    const ticketData = req.body;
+
+    const prediction = await TicketIntelligenceService.predictSatisfaction(ticketData);
+
+    res.status(200).json({
+      success: true,
+      data: prediction,
+    });
+  })
+);
+
+// 批量分类工单
+router.post(
+  '/batch-classify',
+  authorize('admin', 'manager'),
+  [body('tickets').isArray().withMessage('Tickets must be an array')],
+  asyncHandler(async (req: Request, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      throw AppError.badRequest('Validation failed', 'VALIDATION_ERROR', errors.array());
+    }
+
+    const { tickets } = req.body;
+
+    const results = await TicketIntelligenceService.batchClassifyTickets(tickets);
+
+    res.status(200).json({
+      success: true,
+      data: results,
+    });
+  })
+);
+
+export default router;
+
+```
+依赖模块:
+- openai (OpenAI API 客户端)
+预期影响:
+- 自动化工单分类，减少人工分类时间 70%
+- 提供智能回复建议，提升响应速度 50%
+- 实时情感监控，及时识别不满客户
+- 智能数据提取，简化信息录入流程
+- 预测客户满意度，主动改善服务质量
+---
+### Task 2.3: 测试体系建立
+描述: 建立完整的自动化测试体系，包括单元测试、集成测试和端到端测试。
+技术建议:
+1. 使用 Jest 作为测试框架
+2. 实现测试数据工厂和模拟对象
+3. 建立CI/CD自动化测试流程
+4. 实现代码覆盖率报告
+5. 添加性能测试和负载测试
+代码实现:
+```typescript
+// tests/setup.ts - 测试环境设置
+import { pool } from '../src/config/database';
+import { redis } from '../src/config/redis';
+
+// 测试前设置
+beforeAll(async () => {
+  // 连接测试数据库
+  process.env.NODE_ENV = 'test';
+  process.env.DB_NAME = 'yanyu_cloud_test';
+  
+  // 清空测试数据
+  await pool.query('TRUNCATE TABLE users, tickets, ticket_messages CASCADE');
+  
+  // 创建测试用户
+  await pool.query(`
+    INSERT INTO users (id, email, password_hash, first_name, last_name, status)
+    VALUES 
+      ('test-user-1', 'test@example.com', '$2b$10$hash', 'Test', 'User', 'active'),
+      ('test-admin-1', 'admin@example.com', '$2b$10$hash', 'Admin', 'User', 'active')
+  `);
+  
+  // 分配角色
+  await pool.query(`
+    INSERT INTO user_roles (user_id, role_id)
+    SELECT 'test-user-1', id FROM roles WHERE role_name = 'user'
+    UNION ALL
+    SELECT 'test-admin-1', id FROM roles WHERE role_name = 'admin'
+  `);
+});
+
+// 测试后清理
+afterAll(async () => {
+  // 关闭数据库连接
+  await pool.end();
+  
+  // 关闭Redis连接
+  await redis.quit();
+});
+
+// 每个测试后清理
+afterEach(async () => {
+  // 清空Redis缓存
+  await redis.flushdb();
+});
+
+```
+```typescript
+// tests/factories/ticket.factory.ts - 工单测试数据工厂
+import crypto from 'crypto';
+
+export class TicketFactory {
+  static create(overrides: Partial<any> = {}) {
+    return {
+      id: crypto.randomUUID(),
+      ticket_number: `TK${Date.now()}`,
+      title: 'Test Ticket',
+      description: 'This is a test ticket description',
+      priority: 'medium',
+      status: 'open',
+      category: 'Technical Support',
+      customer_id: null,
+      assignee_id: null,
+      creator_id: 'test-user-1',
+      created_at: new Date(),
+      updated_at: new Date(),
+      ...overrides,
+    };
+  }
+
+  static createMany(count: number, overrides: Partial<any> = {}) {
+    return Array.from({ length: count }, () => this.create(overrides));
+  }
+}
+
+```
+```typescript
+// tests/services/ticket.service.test.ts - 工单服务单元测试
+import { TicketService } from '../../src/services/ticket.service';
+import { pool } from '../../src/config/database';
+import { TicketFactory } from '../factories/ticket.factory';
+import { AppError } from '../../src/middleware/error-handler';
+
+describe('TicketService', () => {
+  describe('createTicket', () => {
+    it('should create a new ticket successfully', async () => {
+      const ticketData = {
+        title: 'Test Ticket',
+        description: 'Test Description',
+        priority: 'high' as const,
+        category: 'Technical Support',
+      };
+
+      const ticket = await TicketService.createTicket(ticketData, 'test-user-1');
+
+      expect(ticket).toBeDefined();
+      expect(ticket.title).toBe(ticketData.title);
+      expect(ticket.priority).toBe(ticketData.priority);
+      expect(ticket.status).toBe('open');
+      expect(ticket.ticket_number).toMatch(/^TK\d{6}\d{6}$/);
+    });
+
+    it('should create ticket with tags', async () => {
+      const ticketData = {
+        title: 'Test Ticket',
+        description: 'Test Description',
+        priority: 'medium' as const,
+        category: 'Bug Report',
+        tags: ['bug', 'critical'],
+      };
+
+      const ticket = await TicketService.createTicket(ticketData, 'test-user-1');
+
+      expect(ticket.tags).toEqual(expect.arrayContaining(['bug', 'critical']));
+    });
+
+    it('should throw error if required fields are missing', async () => {
+      const invalidData = {
+        description: 'Test Description',
+        priority: 'low' as const,
+        category: 'Support',
+      } as any;
+
+      await expect(
+        TicketService.createTicket(invalidData, 'test-user-1')
+      ).rejects.toThrow();
+    });
+  });
+
+  describe('getTicketById', () => {
+    it('should retrieve ticket by id', async () => {
+      // 创建测试工单
+      const createdTicket = await TicketService.createTicket(
+        {
+          title: 'Test Ticket',
+          description: 'Test Description',
+          priority: 'high' as const,
+          category: 'Technical Support',
+        },
+        'test-user-1'
+      );
+
+      const ticket = await TicketService.getTicketById(createdTicket.id);
+
+      expect(ticket).toBeDefined();
+      expect(ticket.id).toBe(createdTicket.id);
+      expect(ticket.title).toBe('Test Ticket');
+    });
+
+    it('should throw error if ticket not found', async () => {
+      await expect(
+        TicketService.getTicketById('non-existent-id')
+      ).rejects.toThrow(AppError);
+    });
+  });
+
+  describe('updateTicket', () => {
+    it('should update ticket successfully', async () => {
+      // 创建测试工单
+      const createdTicket = await TicketService.createTicket(
+        {
+          title: 'Original Title',
+          description: 'Original Description',
+          priority: 'low' as const,
+          category: 'Support',
+        },
+        'test-user-1'
+      );
+
+      const updates = {
+        title: 'Updated Title',
+        priority: 'urgent' as const,
+        status: 'in_progress' as const,
+      };
+
+      const updatedTicket = await TicketService.updateTicket(
+        createdTicket.id,
+        updates,
+        'test-user-1'
+      );
+
+      expect(updatedTicket.title).toBe('Updated Title');
+      expect(updatedTicket.priority).toBe('urgent');
+      expect(updatedTicket.status).toBe('in_progress');
+    });
+
+    it('should record activity when updating ticket', async () => {
+      const createdTicket = await TicketService.createTicket(
+        {
+          title: 'Test Ticket',
+          description: 'Test Description',
+          priority: 'medium' as const,
+          category: 'Support',
+        },
+        'test-user-1'
+      );
+
+      await TicketService.updateTicket(
+        createdTicket.id,
+        { status: 'resolved' as const },
+        'test-user-1'
+      );
+
+      // 验证活动记录
+      const activities = await pool.query(
+        'SELECT * FROM ticket_activities WHERE ticket_id = $1 AND action = $2',
+        [createdTicket.id, 'updated']
+      );
+
+      expect(activities.rows.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('deleteTicket', () => {
+    it('should soft delete ticket', async () => {
+      const createdTicket = await TicketService.createTicket(
+        {
+          title: 'Test Ticket',
+          description: 'Test Description',
+          priority: 'low' as const,
+          category: 'Support',
+        },
+        'test-user-1'
+      );
+
+      await TicketService.deleteTicket(createdTicket.id, 'test-admin-1');
+
+      // 验证软删除
+      const result = await pool.query(
+        'SELECT deleted_at FROM tickets WHERE id = $1',
+        [createdTicket.id]
+      );
+
+      expect(result.rows[0].deleted_at).not.toBeNull();
+    });
+  });
+
+  describe('getTickets', () => {
+    beforeEach(async () => {
+      // 创建多个测试工单
+      await TicketService.createTicket(
+        {
+          title: 'Ticket 1',
+          description: 'Description 1',
+          priority: 'high' as const,
+          category: 'Support',
+        },
+        'test-user-1'
+      );
+
+      await TicketService.createTicket(
+        {
+          title: 'Ticket 2',
+          description: 'Description 2',
+          priority: 'low' as const,
+          category: 'Bug Report',
+        },
+        'test-user-1'
+      );
+    });
+
+    it('should retrieve tickets with pagination', async () => {
+      const result = await TicketService.getTickets({}, 1, 10);
+
+      expect(result.tickets).toBeInstanceOf(Array);
+      expect(result.total).toBeGreaterThanOrEqual(2);
+      expect(result.page).toBe(1);
+      expect(result.pageSize).toBe(10);
+    });
+
+    it('should filter tickets by status', async () => {
+      const result = await TicketService.getTickets({ status: 'open' }, 1, 10);
+
+      expect(result.tickets.every(t => t.status === 'open')).toBe(true);
+    });
+
+    it('should filter tickets by priority', async () => {
+      const result = await TicketService.getTickets({ priority: 'high' }, 1, 10);
+
+      expect(result.tickets.every(t => t.priority === 'high')).toBe(true);
+    });
+
+    it('should search tickets by title', async () => {
+      const result = await TicketService.getTickets({ search: 'Ticket 1' }, 1, 10);
+
+      expect(result.tickets.length).toBeGreaterThan(0);
+      expect(result.tickets[0].title).toContain('Ticket 1');
+    });
+  });
+
+  describe('addTicketMessage', () => {
+    it('should add message to ticket', async () => {
+      const ticket = await TicketService.createTicket(
+        {
+          title: 'Test Ticket',
+          description: 'Test Description',
+          priority: 'medium' as const,
+          category: 'Support',
+        },
+        'test-user-1'
+      );
+
+      const message = await TicketService.addTicketMessage(
+        ticket.id,
+        'test-user-1',
+        'This is a test message',
+        false
+      );
+
+      expect(message).toBeDefined();
+      expect(message.message).toBe('This is a test message');
+      expect(message.ticket_id).toBe(ticket.id);
+    });
+  });
+
+  describe('getTicketStats', () => {
+    it('should return ticket statistics', async () => {
+      const stats = await TicketService.getTicketStats();
+
+      expect(stats).toHaveProperty('open_count');
+      expect(stats).toHaveProperty('in_progress_count');
+      expect(stats).toHaveProperty('resolved_count');
+      expect(stats).toHaveProperty('closed_count');
+    });
+  });
+});
+
+```
+```typescript
+// tests/routes/auth.routes.test.ts - 认证路由集成测试
+import request from 'supertest';
+import express from 'express';
+import authRoutes from '../../src/routes/auth.routes';
+import { pool } from '../../src/config/database';
+
+const app = express();
+app.use(express.json());
+app.use('/api/auth', authRoutes);
+
+describe('Auth Routes', () => {
+  describe('POST /api/auth/register', () => {
+    it('should register a new user', async () => {
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send({
+          email: 'newuser@example.com',
+          password: 'Password123!',
+          firstName: 'New',
+          lastName: 'User',
+        });
+
+      expect(response.status).toBe(201);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toHaveProperty('user');
+      expect(response.body.data).toHaveProperty('accessToken');
+      expect(response.body.data).toHaveProperty('refreshToken');
+    });
+
+    it('should return error if email already exists', async () => {
+      // 首次注册
+      await request(app).post('/api/auth/register').send({
+        email: 'duplicate@example.com',
+        password: 'Password123!',
+        firstName: 'Test',
+        lastName: 'User',
+      });
+
+      // 重复注册
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send({
+          email: 'duplicate@example.com',
+          password: 'Password123!',
+          firstName: 'Test',
+          lastName: 'User',
+        });
+
+      expect(response.status).toBe(409);
+      expect(response.body.success).toBe(false);
+    });
+
+    it('should validate password requirements', async () => {
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send({
+          email: 'test@example.com',
+          password: 'weak',
+          firstName: 'Test',
+          lastName: 'User',
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+    });
+  });
+
+  describe('POST /api/auth/login', () => {
+    beforeEach(async () => {
+      // 创建测试用户
+      await request(app).post('/api/auth/register').send({
+        email: 'logintest@example.com',
+        password: 'Password123!',
+        firstName: 'Login',
+        lastName: 'Test',
+      });
+    });
+
+    it('should login with valid credentials', async () => {
+      const response = await request(app)
+        .post('/api/auth/login')
+        .send({
+          email: 'logintest@example.com',
+          password: 'Password123!',
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toHaveProperty('accessToken');
+    });
+
+    it('should return error with invalid credentials', async () => {
+      const response = await request(app)
+        .post('/api/auth/login')
+        .send({
+          email: 'logintest@example.com',
+          password: 'WrongPassword',
+        });
+
+      expect(response.status).toBe(401);
+      expect(response.body.success).toBe(false);
+    });
+  });
+
+  describe('POST /api/auth/refresh', () => {
+    it('should refresh access token', async () => {
+      // 先登录
+      const loginResponse = await request(app)
+        .post('/api/auth/login')
+        .send({
+          email: 'test@example.com',
+          password: 'Password123!',
+        });
+
+      const { refreshToken } = loginResponse.body.data;
+
+      // 刷新令牌
+      const response = await request(app)
+        .post('/api/auth/refresh')
+        .send({ refreshToken });
+
+      expect(response.status).toBe(200);
+      expect(response.body.data).toHaveProperty('accessToken');
+      expect(response.body.data).toHaveProperty('refreshToken');
+    });
+
+    it('should return error with invalid refresh token', async () => {
+      const response = await request(app)
+        .post('/api/auth/refresh')
+        .send({ refreshToken: 'invalid-token' });
+
+      expect(response.status).toBe(401);
+    });
+  });
+
+  describe('GET /api/auth/me', () => {
+    it('should return current user info with valid token', async () => {
+      // 登录获取令牌
+      const loginResponse = await request(app)
+        .post('/api/auth/login')
+        .send({
+          email: 'test@example.com',
+          password: 'Password123!',
+        });
+
+      const { accessToken } = loginResponse.body.data;
+
+      // 获取用户信息
+      const response = await request(app)
+        .get('/api/auth/me')
+        .set('Authorization', `Bearer ${accessToken}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.data).toHaveProperty('userId');
+      expect(response.body.data).toHaveProperty('email');
+    });
+
+    it('should return error without token', async () => {
+      const response = await request(app).get('/api/auth/me');
+
+      expect(response.status).toBe(401);
+    });
+  });
+});
+
+```
+```json
+// package.json - 测试脚本配置
+{
+  "scripts": {
+    "test": "jest --coverage",
+    "test:watch": "jest --watch",
+    "test:unit": "jest --testPathPattern=tests/services",
+    "test:integration": "jest --testPathPattern=tests/routes",
+    "test:e2e": "jest --testPathPattern=tests/e2e",
+    "test:ci": "jest --ci --coverage --maxWorkers=2"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "setupFilesAfterEnv": ["<rootDir>/tests/setup.ts"],
+    "testMatch": ["**/__tests__/**/*.ts", "**/?(*.)+(spec|test).ts"],
+    "collectCoverageFrom": [
+      "src/**/*.ts",
+      "!src/**/*.d.ts",
+      "!src/index.ts"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 70,
+        "functions": 70,
+        "lines": 70,
+        "statements": 70
+      }
+    },
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/src/$1"
+    }
+  }
+}
+
+```
+```yaml
+# .github/workflows/test.yml - CI/CD 测试流程
+name: Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: yanyu_cloud_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run database migrations
+        run: npm run migrate
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: yanyu_cloud_test
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Run unit tests
+        run: npm run test:unit
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: yanyu_cloud_test
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+
+      - name: Run integration tests
+        run: npm run test:integration
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: yanyu_cloud_test
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+
+      - name: Generate coverage report
+        run: npm run test:ci
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: yanyu_cloud_test
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+
+      - name: Check coverage thresholds
+        run: |
+          npm run test:ci
+          if [ $? -ne 0 ]; then
+            echo "Coverage thresholds not met"
+            exit 1
+          fi
+
+```
+依赖模块:
+- jest (测试框架)
+- ts-jest (TypeScript支持)
+- supertest (HTTP测试)
+- @types/jest (Jest类型定义)
+预期影响:
+- 建立完整的测试覆盖体系
+- 减少生产环境bug数量 60-80%
+- 提升代码质量和可维护性
+- 加快开发迭代速度
+- 增强重构信心，降低技术债务
+---
+## 成功因素实施建议
+### Factor 1: 优先级管理
+实施建议:
+1. 建立优先级矩阵
+```typescript
+// 优先级评分系统
+interface TaskPriority {
+  urgency: 1 | 2 | 3 | 4 | 5; // 紧急程度
+  impact: 1 | 2 | 3 | 4 | 5;  // 影响范围
+  effort: 1 | 2 | 3 | 4 | 5;  // 工作量
+}
+
+function calculatePriority(task: TaskPriority): number {
+  // 优先级分数 = (紧急程度 * 0.4) + (影响范围 * 0.4) - (工作量 * 0.2)
+  return (task.urgency * 0.4) + (task.impact * 0.4) - (task.effort * 0.2);
+}
+
+// 使用示例
+const tasks = [
+  { name: "建立后端架构", urgency: 5, impact: 5, effort: 4 },
+  { name: "完善认证系统", urgency: 5, impact: 5, effort: 3 },
+  { name: "移动端优化", urgency: 2, impact: 3, effort: 4 },
+];
+
+tasks.sort((a, b) => calculatePriority(b) - calculatePriority(a));
+
+```
+1. 每周优先级评审
+2. 每周一进行任务优先级评审
+3. 根据业务需求和用户反馈调整优先级
+4. 记录优先级变更原因
+5. 避免范围蔓延
+6. 设定明确的里程碑目标
+7. 新需求进入待办清单，不直接加入当前迭代
+8. 维护技术债务清单，定期还债
+### Factor 2: 持续集成
+实施建议:
+1. 自动化部署流程
+```yaml
+# .github/workflows/deploy.yml
+name: Deploy
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Run tests
+        run: npm test
+      
+      - name: Build application
+        run: npm run build
+      
+      - name: Deploy to production
+        run: |
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
+          'cd /opt/yanyu-cloud && \
+           git pull && \
+           npm install && \
+           npm run build && \
+           pm2 restart yanyu-cloud'
+
+```
+1. 代码质量检查
+2. 配置 ESLint 和 Prettier
+3. 强制代码评审（至少一人审核）
+4. 自动化代码质量检查（SonarQube）
+5. 版本管理策略
+6. 主分支（main）：生产环境
+7. 开发分支（develop）：集成测试
+8. 功能分支（feature/*）：新功能开发
+9. 修复分支（hotfix/*）：紧急修复
+### Factor 3: 用户反馈
+实施建议:
+1. 建立反馈收集机制
+```typescript
+// 用户反馈系统
+interface UserFeedback {
+  userId: string;
+  feature: string;
+  type: 'bug' | 'feature_request' | 'improvement' | 'complaint';
+  priority: 'low' | 'medium' | 'high';
+  description: string;
+  attachments?: string[];
+  createdAt: Date;
+}
+
+// 自动化反馈处理
+async function processFeedback(feedback: UserFeedback) {
+  // 1. 保存反馈
+  await saveFeedback(feedback);
+  
+  // 2. 自动分类
+  const category = await classifyFeedback(feedback.description);
+  
+  // 3. 创建工单或任务
+  if (feedback.type === 'bug' && feedback.priority === 'high') {
+    await createBugTicket(feedback);
+  }
+  
+  // 4. 通知相关团队
+  await notifyTeam(feedback);
+}
+
+```
+1. 用户访谈计划
+2. 每月至少2次用户访谈
+3. 记录用户痛点和需求
+4. 验证功能设计假设
+5. 数据驱动决策
+6. 监控功能使用率
+7. 分析用户行为路径
+8. A/B测试新功能
+### Factor 4: 代码质量
+实施建议:
+1. 代码规范
+```typescript
+// .eslintrc.js
+module.exports = {
+  extends: [
+    'eslint:recommended',
+    'plugin:@typescript-eslint/recommended',
+    'plugin:prettier/recommended',
+  ],
+  rules: {
+    'no-console': 'warn',
+    '@typescript-eslint/no-explicit-any': 'error',
+    '@typescript-eslint/explicit-function-return-type': 'warn',
+    'max-lines-per-function': ['warn', 100],
+    'complexity': ['warn', 10],
+  },
+};
+
+```
+1. 代码评审清单
+2. ✅ 代码符合规范
+3. ✅ 有足够的测试覆盖
+4. ✅ 没有明显的性能问题
+5. ✅ 错误处理完善
+6. ✅ 文档齐全
+7. 技术债务管理
+8. 每个迭代预留20%时间处理技术债务
+9. 维护技术债务清单
+10. 定期重构关键模块
+### Factor 5: 安全第一
+实施建议:
+1. 安全检查清单
+```typescript
+// 安全最佳实践
+const securityChecklist = {
+  authentication: [
+    '使用强密码策略',
+    '实施多因素认证',
+    '令牌安全存储',
+    '会话超时管理',
+  ],
+  dataProtection: [
+    '敏感数据加密',
+    '使用HTTPS',
+    'SQL注入防护',
+    'XSS防护',
+  ],
+  accessControl: [
+    '最小权限原则',
+    'RBAC实施',
+    '审计日志',
+    '异常检测',
+  ],
+  infrastructure: [
+    '定期安全更新',
+    '防火墙配置',
+    'DDoS防护',
+    '备份策略',
+  ],
+};
+
+```
+1. 安全审计计划
+2. 每季度进行安全审计
+3. 使用自动化安全扫描工具
+4. 渗透测试（每半年一次）
+5. 应急响应计划
+6. 建立安全事件响应流程
+7. 定义严重性级别
+8. 准备回滚方案
+---
+## 预期成果总结
+### 立即行动阶段（1-2周）
+交付成果:
+- ✅ 完整的后端API框架
+- ✅ 安全的JWT认证系统
+- ✅ 核心工单管理功能
+- ✅ 统一错误处理和日志系统
+- ✅ 数据库架构和连接池
+关键指标:
+- API响应时间 < 200ms
+- 数据库连接池利用率 < 70%
+- 代码测试覆盖率 > 60%
+### 短期目标阶段（3-8周）
+交付成果:
+- ✅ Prometheus + Grafana 监控系统
+- ✅ AI智能分析和推荐功能
+- ✅ 完整的自动化测试体系
+- ✅ CI/CD自动化流程
+- ✅ 性能优化和缓存策略
+关键指标:
+- 系统可用性 > 99.5%
+- AI分析准确率 > 85%
+- 代码测试覆盖率 > 75%
+- 部署频率 > 3次/周
+### 中期目标阶段（3-6个月）
+交付成果:
+- ✅ 工作流引擎系统
+- ✅ 移动端优化方案
+- ✅ 高级数据可视化
+- ✅ 自定义仪表盘
+- ✅ 报表生成系统
+关键指标:
+- 工作流执行成功率 > 95%
+- 移动端用户占比 > 30%
+- 报表生成时间 < 5秒
+### 长期目标阶段（6-12个月）
+交付成果:
+- ✅ SSO企业集成
+- ✅ 完整国际化支持
+- ✅ 插件生态系统
+- ✅ 多租户架构
+- ✅ 高级安全功能
+关键指标:
+- 企业客户数量增长 > 50%
+- 国际用户占比 > 20%
+- 插件数量 > 10个
+- 安全事件 = 0
+---
+## 执行路线图
+![图片](https://docimg9.docs.qq.com/image/AgAAJrsBb_cN237xrDFJP5nQgn7Y0x1t.png?w=4482&h=1520)
+```plaintext
+Diagram.download-icon {
+            cursor: pointer;
+            transform-origin: center;
+        }
+        .download-icon .arrow-part {
+            transition: transform 0.35s cubic-bezier(0.35, 0.2, 0.14, 0.95);
+             transform-origin: center;
+        }
+        button:has(.download-icon):hover .download-icon .arrow-part, button:has(.download-icon):focus-visible .download-icon .arrow-part {
+          transform: translateY(-1.5px);
+        }
+        #mermaid-diagram-r44ci{font-family:var(--font-geist-sans);font-size:12px;fill:#000000;}#mermaid-diagram-r44ci .error-icon{fill:#552222;}#mermaid-diagram-r44ci .error-text{fill:#552222;stroke:#552222;}#mermaid-diagram-r44ci .edge-thickness-normal{stroke-width:1px;}#mermaid-diagram-r44ci .edge-thickness-thick{stroke-width:3.5px;}#mermaid-diagram-r44ci .edge-pattern-solid{stroke-dasharray:0;}#mermaid-diagram-r44ci .edge-thickness-invisible{stroke-width:0;fill:none;}#mermaid-diagram-r44ci .edge-pattern-dashed{stroke-dasharray:3;}#mermaid-diagram-r44ci .edge-pattern-dotted{stroke-dasharray:2;}#mermaid-diagram-r44ci .marker{fill:#666;stroke:#666;}#mermaid-diagram-r44ci .marker.cross{stroke:#666;}#mermaid-diagram-r44ci svg{font-family:var(--font-geist-sans);font-size:12px;}#mermaid-diagram-r44ci p{margin:0;}#mermaid-diagram-r44ci .mermaid-main-font{font-family:var(--mermaid-font-family, "trebuchet ms", verdana, arial, sans-serif);}#mermaid-diagram-r44ci .exclude-range{fill:#eeeeee;}#mermaid-diagram-r44ci .section{stroke:none;opacity:0.2;}#mermaid-diagram-r44ci .section0{fill:hsl(0, 0%, 73.9215686275%);}#mermaid-diagram-r44ci .section2{fill:hsl(0, 0%, 73.9215686275%);}#mermaid-diagram-r44ci .section1,#mermaid-diagram-r44ci .section3{fill:white;opacity:0.2;}#mermaid-diagram-r44ci .sectionTitle0{fill:#333;}#mermaid-diagram-r44ci .sectionTitle1{fill:#333;}#mermaid-diagram-r44ci .sectionTitle2{fill:#333;}#mermaid-diagram-r44ci .sectionTitle3{fill:#333;}#mermaid-diagram-r44ci .sectionTitle{text-anchor:start;font-family:var(--mermaid-font-family, "trebuchet ms", verdana, arial, sans-serif);}#mermaid-diagram-r44ci .grid .tick{stroke:hsl(0, 0%, 90%);opacity:0.8;shape-rendering:crispEdges;}#mermaid-diagram-r44ci .grid .tick text{font-family:var(--font-geist-sans);fill:#000000;}#mermaid-diagram-r44ci .grid path{stroke-width:0;}#mermaid-diagram-r44ci .today{fill:none;stroke:#d42;stroke-width:2px;}#mermaid-diagram-r44ci .task{stroke-width:2;}#mermaid-diagram-r44ci .taskText{text-anchor:middle;font-family:var(--mermaid-font-family, "trebuchet ms", verdana, arial, sans-serif);}#mermaid-diagram-r44ci .taskTextOutsideRight{fill:#333;text-anchor:start;font-family:var(--mermaid-font-family, "trebuchet ms", verdana, arial, sans-serif);}#mermaid-diagram-r44ci .taskTextOutsideLeft{fill:#333;text-anchor:end;}#mermaid-diagram-r44ci .task.clickable{cursor:pointer;}#mermaid-diagram-r44ci .taskText.clickable{cursor:pointer;fill:#003163!important;font-weight:bold;}#mermaid-diagram-r44ci .taskTextOutsideLeft.clickable{cursor:pointer;fill:#003163!important;font-weight:bold;}#mermaid-diagram-r44ci .taskTextOutsideRight.clickable{cursor:pointer;fill:#003163!important;font-weight:bold;}#mermaid-diagram-r44ci .taskText0,#mermaid-diagram-r44ci .taskText1,#mermaid-diagram-r44ci .taskText2,#mermaid-diagram-r44ci .taskText3{fill:white;}#mermaid-diagram-r44ci .task0,#mermaid-diagram-r44ci .task1,#mermaid-diagram-r44ci .task2,#mermaid-diagram-r44ci .task3{fill:#707070;stroke:hsl(0, 0%, 33.9215686275%);}#mermaid-diagram-r44ci .taskTextOutside0,#mermaid-diagram-r44ci .taskTextOutside2{fill:#333;}#mermaid-diagram-r44ci .taskTextOutside1,#mermaid-diagram-r44ci .taskTextOutside3{fill:#333;}#mermaid-diagram-r44ci .active0,#mermaid-diagram-r44ci .active1,#mermaid-diagram-r44ci .active2,#mermaid-diagram-r44ci .active3{fill:#eee;stroke:hsl(0, 0%, 33.9215686275%);}#mermaid-diagram-r44ci .activeText0,#mermaid-diagram-r44ci .activeText1,#mermaid-diagram-r44ci .activeText2,#mermaid-diagram-r44ci .activeText3{fill:#333!important;}#mermaid-diagram-r44ci .done0,#mermaid-diagram-r44ci .done1,#mermaid-diagram-r44ci .done2,#mermaid-diagram-r44ci .done3{stroke:#666;fill:#bbb;stroke-width:2;}#mermaid-diagram-r44ci .doneText0,#mermaid-diagram-r44ci .doneText1,#mermaid-diagram-r44ci .doneText2,#mermaid-diagram-r44ci .doneText3{fill:#333!important;}#mermaid-diagram-r44ci .crit0,#mermaid-diagram-r44ci .crit1,#mermaid-diagram-r44ci .crit2,#mermaid-diagram-r44ci .crit3{stroke:hsl(10.9090909091, 73.3333333333%, 40%);fill:#d42;stroke-width:2;}#mermaid-diagram-r44ci .activeCrit0,#mermaid-diagram-r44ci .activeCrit1,#mermaid-diagram-r44ci .activeCrit2,#mermaid-diagram-r44ci .activeCrit3{stroke:hsl(10.9090909091, 73.3333333333%, 40%);fill:#eee;stroke-width:2;}#mermaid-diagram-r44ci .doneCrit0,#mermaid-diagram-r44ci .doneCrit1,#mermaid-diagram-r44ci .doneCrit2,#mermaid-diagram-r44ci .doneCrit3{stroke:hsl(10.9090909091, 73.3333333333%, 40%);fill:#bbb;stroke-width:2;cursor:pointer;shape-rendering:crispEdges;}#mermaid-diagram-r44ci .milestone{transform:rotate(45deg) scale(0.8,0.8);}#mermaid-diagram-r44ci .milestoneText{font-style:italic;}#mermaid-diagram-r44ci .doneCritText0,#mermaid-diagram-r44ci .doneCritText1,#mermaid-diagram-r44ci .doneCritText2,#mermaid-diagram-r44ci .doneCritText3{fill:#333!important;}#mermaid-diagram-r44ci .activeCritText0,#mermaid-diagram-r44ci .activeCritText1,#mermaid-diagram-r44ci .activeCritText2,#mermaid-diagram-r44ci .activeCritText3{fill:#333!important;}#mermaid-diagram-r44ci .titleText{text-anchor:middle;font-size:18px;fill:#333;font-family:var(--mermaid-font-family, "trebuchet ms", verdana, arial, sans-serif);}#mermaid-diagram-r44ci .flowchart-link{stroke:hsl(var(--gray-400));stroke-width:1px;}#mermaid-diagram-r44ci .marker,#mermaid-diagram-r44ci marker,#mermaid-diagram-r44ci marker *{fill:hsl(var(--gray-400))!important;stroke:hsl(var(--gray-400))!important;}#mermaid-diagram-r44ci .label,#mermaid-diagram-r44ci text,#mermaid-diagram-r44ci text>tspan{fill:hsl(var(--black))!important;color:hsl(var(--black))!important;}#mermaid-diagram-r44ci .background,#mermaid-diagram-r44ci rect.relationshipLabelBox{fill:hsl(var(--white))!important;}#mermaid-diagram-r44ci .entityBox,#mermaid-diagram-r44ci .attributeBoxEven{fill:hsl(var(--gray-150))!important;}#mermaid-diagram-r44ci .attributeBoxOdd{fill:hsl(var(--white))!important;}#mermaid-diagram-r44ci .label-container,#mermaid-diagram-r44ci rect.actor{fill:hsl(var(--white))!important;stroke:hsl(var(--gray-400))!important;}#mermaid-diagram-r44ci line{stroke:hsl(var(--gray-400))!important;}#mermaid-diagram-r44ci :root{--mermaid-font-family:var(--font-geist-sans);}2025-02-012025-03-012025-04-012025-05-012025-06-01建立后端架构           完善认证系统           核心功能API开发        系统监控和性能优化     AI功能增强             测试体系建立           工作流引擎开发         移动端优化             数据可视化增强         国际化和本地化         企业级功能             插件生态建设           立即行动短期目标中期目标长期目标YanYu Cloud³ 开发路线图
+
+```
+---
+## 结语
+这份执行计划提供了YanYu Cloud³智能商务管理系统从当前状态到完善系统的完整路径。计划包含：
+1. 4个开发阶段，覆盖12个月开发周期
+2. 20+个核心任务，包含详细技术方案和代码实现
+3. 5个关键成功因素，确保项目顺利推进
+4. 可量化的成功指标，追踪项目进展
+关键要点:
+- 优先完成高价值、高影响的功能
+- 建立完整的质量保障体系
+- 持续收集和响应用户反馈
+- 保持代码质量和安全性
+- 渐进式架构演进
+下一步行动:
+1. 立即启动"立即行动"阶段任务
+2. 建立每周进度跟踪机制
+3. 分配团队资源和责任
+4. 设置里程碑检查点
+5. 开始第一个Sprint
+通过系统化执行这份计划，YanYu Cloud³将发展成为一个功能完善、性能优异、安全可靠的企业级智能商务管理系统。

@@ -1,0 +1,2000 @@
+### 数据可视化
+当前问题：
+系统数据可视化能力薄弱，图表类型单一，交互性差，定制能力弱，不支持高级分析视图和自定义报表，难以满足复杂业务分析需求。
+改进建议：
+1. 引入强大的图表库并封装组件
+2. 添加高级数据过滤和下钻功能
+3. 实现数据透视和多维分析视图
+4. 添加自定义报表生成器
+5. 优化图表性能和加载策略
+技术实现方案：
+——————————————————————————————————————————
+// 1. 高级图表组件封装 (components/data-visualization/chart-components.tsx)
+'use client';
+
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  BarChart, Bar, LineChart, Line, AreaChart, Area, PieChart, Pie, 
+  ScatterChart, Scatter, RadarChart, Radar, Treemap,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  Cell, Sector, RadarPoint, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+} from 'recharts';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { IconDownload, IconExpand, IconFilter, IconRefresh } from '@/components/ui/icons';
+
+// 图表类型定义
+type ChartType = 
+  | 'bar' 
+  | 'line' 
+  | 'area' 
+  | 'pie' 
+  | 'scatter' 
+  | 'radar' 
+  | 'treemap'
+  | 'funnel'
+  | 'heatmap'
+  | 'calendar';
+
+// 数据点类型定义
+interface DataPoint {
+  [key: string]: string | number | Date | null;
+}
+
+// 图表尺寸定义
+interface ChartDimensions {
+  width?: number | string;
+  height?: number | string;
+  aspectRatio?: number;
+}
+
+// 图表配置定义
+interface ChartConfig {
+  type: ChartType;
+  xAxis?: string;
+  yAxis?: string | string[];
+  category?: string;
+  value?: string;
+  colorScheme?: string[];
+  stacked?: boolean;
+  showGrid?: boolean;
+  showLegend?: boolean;
+  animationDuration?: number;
+}
+
+// 图表组件属性
+interface DataVisualizationChartProps {
+  data: DataPoint[];
+  config: ChartConfig;
+  dimensions?: ChartDimensions;
+  title?: string;
+  description?: string;
+  loading?: boolean;
+  onRefresh?: () => void;
+  onFilter?: () => void;
+  onExport?: () => void;
+  className?: string;
+}
+
+// 默认颜色方案
+const DEFAULT_COLORS = [
+  '#3366CC', '#DC3912', '#FF9900', '#109618', '#990099',
+  '#0099C6', '#DD4477', '#66AA00', '#B82E2E', '#316395',
+];
+
+export function DataVisualizationChart({
+  data,
+  config,
+  dimensions = { height: 300 },
+  title,
+  description,
+  loading = false,
+  onRefresh,
+  onFilter,
+  onExport,
+  className = '',
+}: DataVisualizationChartProps) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [chartType, setChartType] = useState<ChartType>(config.type);
+  const chartRef = useRef<HTMLDivElement>(null);
+  const colorScheme = config.colorScheme || DEFAULT_COLORS;
+  
+  // 更新活动索引（用于饼图交互）
+  const onPieEnter = (_: any, index: number) => {
+    setActiveIndex(index);
+  };
+  
+  // 自动维度计算
+  const calculatedDimensions = {
+    width: dimensions.width || '100%',
+    height: dimensions.height || 300,
+  };
+  
+  // 生成饼图自定义活动扇区
+  const renderActiveShape = (props: any) => {
+    const {
+      cx, cy, innerRadius, outerRadius, startAngle, endAngle,
+      fill, payload, percent, value
+    } = props;
+  
+    return (
+      <g>
+        <text x={cx} y={cy} dy={-20} textAnchor="middle" fill={fill}>
+          {payload.name}
+        </text>
+        <text x={cx} y={cy} dy={8} textAnchor="middle" fill="#999">
+          {`${value}`}
+        </text>
+        <text x={cx} y={cy} dy={25} textAnchor="middle" fill="#999">
+          {`(${(percent * 100).toFixed(2)}%)`}
+        </text>
+        <Sector
+          cx={cx}
+          cy={cy}
+          innerRadius={innerRadius}
+          outerRadius={outerRadius + 10}
+          startAngle={startAngle}
+          endAngle={endAngle}
+          fill={fill}
+        />
+        <Sector
+          cx={cx}
+          cy={cy}
+          startAngle={startAngle}
+          endAngle={endAngle}
+          innerRadius={outerRadius + 10}
+          outerRadius={outerRadius + 15}
+          fill={fill}
+        />
+      </g>
+    );
+  };
+  
+  // 渲染不同类型的图表
+  const renderChart = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center h-full w-full">
+          <Skeleton className="h-full w-full" />
+        </div>
+      );
+    }
+    
+    if (!data || data.length === 0) {
+      return (
+        <div className="flex items-center justify-center h-full w-full">
+          <p className="text-gray-500">暂无数据</p>
+        </div>
+      );
+    }
+    
+    switch (chartType) {
+      case 'bar':
+        return (
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={data}
+              margin={{ top: 20, right: 30, left: 20, bottom: 40 }}
+              barCategoryGap="20%"
+            >
+              {config.showGrid !== false && <CartesianGrid strokeDasharray="3 3" />}
+              <XAxis 
+                dataKey={config.xAxis} 
+                angle={-45}
+                textAnchor="end"
+                height={70}
+                tick={{ fontSize: 12 }}
+              />
+              <YAxis />
+              <Tooltip />
+              {config.showLegend !== false && <Legend verticalAlign="top" height={36} />}
+              {Array.isArray(config.yAxis) ? (
+                config.yAxis.map((axis, index) => (
+                  <Bar 
+                    key={axis} 
+                    dataKey={axis} 
+                    fill={colorScheme[index % colorScheme.length]} 
+                    stackId={config.stacked ? "stack" : undefined}
+                    animationDuration={config.animationDuration || 1500}
+                  />
+                ))
+              ) : (
+                <Bar 
+                  dataKey={config.yAxis} 
+                  fill={colorScheme[0]} 
+                  animationDuration={config.animationDuration || 1500}
+                />
+              )}
+            </BarChart>
+          </ResponsiveContainer>
+        );
+        
+      case 'line':
+        return (
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart
+              data={data}
+              margin={{ top: 20, right: 30, left: 20, bottom: 40 }}
+            >
+              {config.showGrid !== false && <CartesianGrid strokeDasharray="3 3" />}
+              <XAxis 
+                dataKey={config.xAxis} 
+                angle={-45}
+                textAnchor="end"
+                height={70}
+                tick={{ fontSize: 12 }}
+              />
+              <YAxis />
+              <Tooltip />
+              {config.showLegend !== false && <Legend verticalAlign="top" height={36} />}
+              {Array.isArray(config.yAxis) ? (
+                config.yAxis.map((axis, index) => (
+                  <Line 
+                    key={axis} 
+                    type="monotone" 
+                    dataKey={axis} 
+                    stroke={colorScheme[index % colorScheme.length]} 
+                    activeDot={{ r: 8 }}
+                    animationDuration={config.animationDuration || 1500}
+                  />
+                ))
+              ) : (
+                <Line 
+                  type="monotone" 
+                  dataKey={config.yAxis} 
+                  stroke={colorScheme[0]} 
+                  activeDot={{ r: 8 }}
+                  animationDuration={config.animationDuration || 1500}
+                />
+              )}
+            </LineChart>
+          </ResponsiveContainer>
+        );
+        
+      case 'area':
+        return (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart
+              data={data}
+              margin={{ top: 20, right: 30, left: 20, bottom: 40 }}
+            >
+              {config.showGrid !== false && <CartesianGrid strokeDasharray="3 3" />}
+              <XAxis 
+                dataKey={config.xAxis} 
+                angle={-45}
+                textAnchor="end"
+                height={70}
+                tick={{ fontSize: 12 }}
+              />
+              <YAxis />
+              <Tooltip />
+              {config.showLegend !== false && <Legend verticalAlign="top" height={36} />}
+              {Array.isArray(config.yAxis) ? (
+                config.yAxis.map((axis, index) => (
+                  <Area 
+                    key={axis} 
+                    type="monotone" 
+                    dataKey={axis} 
+                    stackId={config.stacked ? "stack" : `area${index}`}
+                    fill={colorScheme[index % colorScheme.length]} 
+                    stroke={colorScheme[index % colorScheme.length]} 
+                    fillOpacity={0.6}
+                    animationDuration={config.animationDuration || 1500}
+                  />
+                ))
+              ) : (
+                <Area 
+                  type="monotone" 
+                  dataKey={config.yAxis} 
+                  fill={colorScheme[0]} 
+                  stroke={colorScheme[0]} 
+                  fillOpacity={0.6}
+                  animationDuration={config.animationDuration || 1500}
+                />
+              )}
+            </AreaChart>
+          </ResponsiveContainer>
+        );
+        
+      case 'pie':
+        return (
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                activeIndex={activeIndex}
+                activeShape={renderActiveShape}
+                data={data}
+                cx="50%"
+                cy="50%"
+                innerRadius={60}
+                outerRadius={80}
+                dataKey={config.value}
+                nameKey={config.category}
+                onMouseEnter={onPieEnter}
+                animationDuration={config.animationDuration || 1500}
+              >
+                {data.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={colorScheme[index % colorScheme.length]} />
+                ))}
+              </Pie>
+              <Tooltip />
+              {config.showLegend !== false && <Legend verticalAlign="bottom" height={36} />}
+            </PieChart>
+          </ResponsiveContainer>
+        );
+        
+      case 'scatter':
+        return (
+          <ResponsiveContainer width="100%" height="100%">
+            <ScatterChart
+              margin={{ top: 20, right: 30, left: 20, bottom: 40 }}
+            >
+              {config.showGrid !== false && <CartesianGrid strokeDasharray="3 3" />}
+              <XAxis 
+                type="number" 
+                dataKey={config.xAxis} 
+                name={config.xAxis} 
+                tick={{ fontSize: 12 }}
+              />
+              <YAxis 
+                type="number" 
+                dataKey={config.yAxis as string} 
+                name={config.yAxis as string} 
+                tick={{ fontSize: 12 }}
+              />
+              <Tooltip cursor={{ strokeDasharray: '3 3' }} />
+              {config.showLegend !== false && <Legend verticalAlign="top" height={36} />}
+              <Scatter 
+                name="数据点" 
+                data={data} 
+                fill={colorScheme[0]} 
+                animationDuration={config.animationDuration || 1500}
+              />
+            </ScatterChart>
+          </ResponsiveContainer>
+        );
+        
+      case 'radar':
+        return (
+          <ResponsiveContainer width="100%" height="100%">
+            <RadarChart cx="50%" cy="50%" outerRadius="80%" data={data}>
+              <PolarGrid />
+              <PolarAngleAxis dataKey={config.category} />
+              <PolarRadiusAxis />
+              <Radar 
+                name={config.yAxis as string} 
+                dataKey={config.value} 
+                stroke={colorScheme[0]} 
+                fill={colorScheme[0]} 
+                fillOpacity={0.6}
+                animationDuration={config.animationDuration || 1500}
+              />
+              <Tooltip />
+              {config.showLegend !== false && <Legend verticalAlign="bottom" height={36} />}
+            </RadarChart>
+          </ResponsiveContainer>
+        );
+        
+      case 'treemap':
+        return (
+          <ResponsiveContainer width="100%" height="100%">
+            <Treemap
+              data={data}
+              dataKey={config.value}
+              nameKey={config.category}
+              aspectRatio={4 / 3}
+              stroke="#fff"
+              animationDuration={config.animationDuration || 1500}
+            >
+              {data.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={colorScheme[index % colorScheme.length]} />
+              ))}
+              <Tooltip />
+            </Treemap>
+          </ResponsiveContainer>
+        );
+        
+      default:
+        return (
+          <div className="flex items-center justify-center h-full w-full">
+            <p className="text-gray-500">不支持的图表类型: {chartType}</p>
+          </div>
+        );
+    }
+  };
+  
+  return (
+    <Card className={`overflow-hidden ${className}`}>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <div>
+            {title && <CardTitle className="text-lg">{title}</CardTitle>}
+            {description && <CardDescription>{description}</CardDescription>}
+          </div>
+          <div className="flex items-center gap-2">
+            {/* 图表类型选择器 */}
+            <Select value={chartType} onValueChange={(value) => setChartType(value as ChartType)}>
+              <SelectTrigger className="w-[120px] h-8">
+                <SelectValue placeholder="图表类型" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="bar">柱状图</SelectItem>
+                <SelectItem value="line">折线图</SelectItem>
+                <SelectItem value="area">面积图</SelectItem>
+                <SelectItem value="pie">饼图</SelectItem>
+                <SelectItem value="scatter">散点图</SelectItem>
+                <SelectItem value="radar">雷达图</SelectItem>
+                <SelectItem value="treemap">矩形树图</SelectItem>
+              </SelectContent>
+            </Select>
+            
+            {/* 功能按钮 */}
+            {onFilter && (
+              <Button variant="outline" size="icon" title="筛选" onClick={onFilter}>
+                <IconFilter className="h-4 w-4" />
+              </Button>
+            )}
+            {onRefresh && (
+              <Button variant="outline" size="icon" title="刷新" onClick={onRefresh}>
+                <IconRefresh className="h-4 w-4" />
+              </Button>
+            )}
+            {onExport && (
+              <Button variant="outline" size="icon" title="导出" onClick={onExport}>
+                <IconDownload className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+      
+      <CardContent className="p-0">
+        <div 
+          ref={chartRef}
+          style={{ height: calculatedDimensions.height, width: calculatedDimensions.width }}
+          className="pt-2"
+        >
+          {renderChart()}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// 2. 数据透视表组件 (components/data-visualization/pivot-table.tsx)
+'use client';
+
+import React, { useState, useMemo, useCallback } from 'react';
+import {
+  flexRender,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+  SortingState,
+  ColumnDef,
+  Row,
+  RowData,
+} from '@tanstack/react-table';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { IconArrowDown, IconArrowUp, IconFilter, IconSettings } from '@/components/ui/icons';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
+
+// 数据透视表属性
+interface PivotTableProps<T> {
+  data: T[];
+  defaultColumns: ColumnDef<T>[];
+  title?: string;
+  description?: string;
+  loading?: boolean;
+  onExport?: () => void;
+  onSettingsChange?: (settings: any) => void;
+  className?: string;
+}
+
+declare module '@tanstack/react-table' {
+  interface ColumnMeta<TData extends RowData, TValue> {
+    isNumeric?: boolean;
+  }
+}
+
+export function PivotTable<T>({
+  data,
+  defaultColumns,
+  title,
+  description,
+  loading = false,
+  onExport,
+  onSettingsChange,
+  className = '',
+}: PivotTableProps<T>) {
+  // 表格状态
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnVisibility, setColumnVisibility] = useState({});
+  const [rowSelection, setRowSelection] = useState({});
+  const [globalFilter, setGlobalFilter] = useState('');
+  
+  // 表格实例
+  const table = useReactTable({
+    data,
+    columns: defaultColumns,
+    state: {
+      sorting,
+      columnVisibility,
+      rowSelection,
+      globalFilter,
+    },
+    enableRowSelection: true,
+    onSortingChange: setSorting,
+    onColumnVisibilityChange: setColumnVisibility,
+    onRowSelectionChange: setRowSelection,
+    onGlobalFilterChange: setGlobalFilter,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+  });
+  
+  // 导出选中的行
+  const handleExportSelected = () => {
+    const selectedRows = Object.keys(rowSelection).map(
+      index => data[parseInt(index)]
+    );
+    console.log('导出选中行', selectedRows);
+    onExport?.();
+  };
+  
+  // 渲染表格内容
+  const renderTableContent = () => {
+    if (loading) {
+      return (
+        <TableBody>
+          {Array.from({ length: 5 }).map((_, index) => (
+            <TableRow key={`skeleton-${index}`}>
+              {Array.from({ length: defaultColumns.length }).map((_, colIndex) => (
+                <TableCell key={`skeleton-cell-${index}-${colIndex}`}>
+                  <Skeleton className="h-4 w-full" />
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      );
+    }
+    
+    if (table.getRowModel().rows.length === 0) {
+      return (
+        <TableBody>
+          <TableRow>
+            <TableCell
+              colSpan={defaultColumns.length}
+              className="h-24 text-center"
+            >
+              无数据
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      );
+    }
+    
+    return (
+      <TableBody>
+        {table.getRowModel().rows.map(row => (
+          <TableRow key={row.id} data-state={row.getIsSelected() && "selected"}>
+            {row.getVisibleCells().map(cell => {
+              const isNumeric = cell.column.columnDef.meta?.isNumeric;
+              
+              return (
+                <TableCell 
+                  key={cell.id} 
+                  className={isNumeric ? "text-right tabular-nums" : ""}
+                >
+                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                </TableCell>
+              );
+            })}
+          </TableRow>
+        ))}
+      </TableBody>
+    );
+  };
+  
+  return (
+    <Card className={`${className}`}>
+      <CardHeader className="pb-2">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+          <div>
+            {title && <CardTitle className="text-lg">{title}</CardTitle>}
+            {description && <CardDescription>{description}</CardDescription>}
+          </div>
+          
+          <div className="flex flex-col md:flex-row items-center gap-2">
+            {/* 搜索输入框 */}
+            <div className="relative w-full md:w-auto">
+              <Input
+                placeholder="搜索..."
+                value={globalFilter}
+                onChange={(e) => setGlobalFilter(e.target.value)}
+                className="max-w-xs h-9"
+              />
+            </div>
+            
+            {/* 列显示控制 */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9">
+                  <IconSettings className="h-4 w-4 mr-1" /> 列设置
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>切换列显示</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {table.getAllColumns()
+                  .filter(column => column.getCanHide())
+                  .map(column => (
+                    <DropdownMenuCheckboxItem
+                      key={column.id}
+                      checked={column.getIsVisible()}
+                      onCheckedChange={(value) => column.toggleVisibility(!!value)}
+                    >
+                      {column.id}
+                    </DropdownMenuCheckboxItem>
+                  ))
+                }
+              </DropdownMenuContent>
+            </DropdownMenu>
+            
+            {/* 导出按钮 */}
+            {onExport && (
+              <Button variant="outline" size="sm" onClick={handleExportSelected} className="h-9">
+                导出{Object.keys(rowSelection).length > 0 ? ` (${Object.keys(rowSelection).length})` : ''}
+              </Button>
+            )}
+          </div>
+        </div>
+        
+        {/* 筛选标签显示 */}
+        {table.getState().columnFilters.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-2">
+            {table.getState().columnFilters.map(filter => (
+              <Badge key={filter.id} variant="outline" className="flex items-center gap-1">
+                {filter.id}: {filter.value as string}
+                <button 
+                  className="ml-1 rounded-full hover:bg-gray-200 p-0.5" 
+                  onClick={() => table.getColumn(filter.id)?.setFilterValue(undefined)}
+                >
+                  ×
+                </button>
+              </Badge>
+            ))}
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="h-6 px-2 text-xs"
+              onClick={() => table.resetColumnFilters()}
+            >
+              清除全部
+            </Button>
+          </div>
+        )}
+      </CardHeader>
+      
+      <CardContent className="p-0">
+        <div className="rounded-md border overflow-x-auto">
+          <Table>
+            <TableHeader>
+              {table.getHeaderGroups().map(headerGroup => (
+                <TableRow key={headerGroup.id}>
+                  {headerGroup.headers.map(header => {
+                    const isNumeric = header.column.columnDef.meta?.isNumeric;
+                    
+                    return (
+                      <TableHead 
+                        key={header.id} 
+                        className={isNumeric ? "text-right" : ""}
+                      >
+                        {header.isPlaceholder ? null : (
+                          <div className="flex items-center gap-1">
+                            <div
+                              className={
+                                header.column.getCanSort()
+                                  ? "cursor-pointer select-none flex items-center gap-1"
+                                  : ""
+                              }
+                              onClick={header.column.getToggleSortingHandler()}
+                            >
+                              {flexRender(
+                                header.column.columnDef.header,
+                                header.getContext()
+                              )}
+                              {{
+                                asc: <IconArrowUp className="h-3 w-3" />,
+                                desc: <IconArrowDown className="h-3 w-3" />,
+                              }[header.column.getIsSorted() as string] ?? null}
+                            </div>
+                            
+                            {/* 列筛选器 */}
+                            {header.column.getCanFilter() && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-4 w-4">
+                                    <IconFilter className="h-3 w-3" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="start">
+                                  <div className="p-2">
+                                    <Input
+                                      placeholder={`筛选 ${header.column.id}...`}
+                                      value={(header.column.getFilterValue() as string) ?? ''}
+                                      onChange={(e) =>
+                                        header.column.setFilterValue(e.target.value)
+                                      }
+                                      className="min-w-[200px]"
+                                    />
+                                  </div>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
+                          </div>
+                        )}
+                      </TableHead>
+                    );
+                  })}
+                </TableRow>
+              ))}
+            </TableHeader>
+            
+            {renderTableContent()}
+          </Table>
+        </div>
+      </CardContent>
+      
+      {/* 分页控制 */}
+      <CardFooter className="flex items-center justify-between py-4">
+        <div className="flex-1 text-sm text-muted-foreground">
+          {Object.keys(rowSelection).length > 0 && (
+            <div className="flex items-center gap-1">
+              已选择 <Badge variant="outline">{Object.keys(rowSelection).length}</Badge> 行
+              <Button variant="ghost" size="sm" onClick={() => setRowSelection({})}>
+                清除
+              </Button>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center justify-end space-x-2">
+          <div className="flex items-center gap-1">
+            <span className="text-sm">每页:</span>
+            <Select
+              value={table.getState().pagination.pageSize.toString()}
+              onValueChange={(value) => table.setPageSize(Number(value))}
+            >
+              <SelectTrigger className="h-8 w-[70px]">
+                <SelectValue placeholder={table.getState().pagination.pageSize} />
+              </SelectTrigger>
+              <SelectContent>
+                {[10, 20, 30, 50, 100].map(pageSize => (
+                  <SelectItem key={pageSize} value={pageSize.toString()}>
+                    {pageSize}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <div className="flex w-[100px] items-center justify-center text-sm">
+            第 {table.getState().pagination.pageIndex + 1} 页，
+            共 {table.getPageCount()} 页
+          </div>
+          
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+              className="h-8 w-8 p-0"
+            >
+              <span className="sr-only">上一页</span>
+              <IconArrowLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+              className="h-8 w-8 p-0"
+            >
+              <span className="sr-only">下一页</span>
+              <IconArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </CardFooter>
+    </Card>
+  );
+}
+
+// 缺失的图标组件
+const IconArrowLeft = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path d="m15 18-6-6 6-6" />
+  </svg>
+);
+
+const IconArrowRight = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path d="m9 18 6-6-6-6" />
+  </svg>
+);
+
+// 3. 自定义报表生成器 (components/data-visualization/report-builder.tsx)
+'use client';
+
+import React, { useState, useCallback } from 'react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+  DragDropContext,
+  Droppable,
+  Draggable,
+  DropResult,
+} from 'react-beautiful-dnd';
+import { toast } from 'sonner';
+
+// 字段类型定义
+interface FieldDefinition {
+  id: string;
+  name: string;
+  type: 'string' | 'number' | 'date' | 'boolean';
+  aggregation?: 'sum' | 'avg' | 'count' | 'min' | 'max';
+  format?: string;
+}
+
+// 图表定义
+interface ChartDefinition {
+  id: string;
+  type: 'bar' | 'line' | 'pie' | 'area';
+  title: string;
+  xAxis?: string;
+  yAxis?: string[];
+  filters?: any[];
+}
+
+// 报表定义
+interface ReportDefinition {
+  id: string;
+  name: string;
+  description?: string;
+  dataSource: string;
+  fields: string[];
+  charts: ChartDefinition[];
+  filters?: any[];
+  schedule?: {
+    enabled: boolean;
+    frequency: 'daily' | 'weekly' | 'monthly';
+    time?: string;
+    recipients?: string[];
+  };
+}
+
+interface ReportBuilderProps {
+  availableFields: FieldDefinition[];
+  availableDataSources: { id: string; name: string }[];
+  existingReports?: ReportDefinition[];
+  onSave: (report: ReportDefinition) => Promise<void>;
+}
+
+export function ReportBuilder({
+  availableFields,
+  availableDataSources,
+  existingReports = [],
+  onSave,
+}: ReportBuilderProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('fields');
+  const [reportDefinition, setReportDefinition] = useState<ReportDefinition>({
+    id: `report-${Date.now()}`,
+    name: '',
+    description: '',
+    dataSource: '',
+    fields: [],
+    charts: [],
+  });
+  const [selectedFields, setSelectedFields] = useState<string[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  
+  // 处理字段拖放
+  const handleFieldDragEnd = useCallback((result: DropResult) => {
+    if (!result.destination) return;
+    
+    const { source, destination } = result;
+    
+    // 从可用字段拖到选中字段
+    if (source.droppableId === 'available-fields' && destination.droppableId === 'selected-fields') {
+      const fieldId = availableFields[source.index].id;
+      if (!selectedFields.includes(fieldId)) {
+        setSelectedFields([...selectedFields, fieldId]);
+      }
+    }
+    // 从选中字段中移除
+    else if (source.droppableId === 'selected-fields' && destination.droppableId === 'available-fields') {
+      setSelectedFields(selectedFields.filter(id => id !== selectedFields[source.index]));
+    }
+    // 在选中字段内重排序
+    else if (source.droppableId === 'selected-fields' && destination.droppableId === 'selected-fields') {
+      const newSelectedFields = [...selectedFields];
+      const [moved] = newSelectedFields.splice(source.index, 1);
+      newSelectedFields.splice(destination.index, 0, moved);
+      setSelectedFields(newSelectedFields);
+    }
+  }, [availableFields, selectedFields]);
+  
+  // 添加图表
+  const addChart = () => {
+    const newChart: ChartDefinition = {
+      id: `chart-${Date.now()}`,
+      type: 'bar',
+      title: '新图表',
+    };
+    
+    setReportDefinition({
+      ...reportDefinition,
+      charts: [...reportDefinition.charts, newChart],
+    });
+  };
+  
+  // 更新图表
+  const updateChart = (index: number, chart: Partial<ChartDefinition>) => {
+    const updatedCharts = [...reportDefinition.charts];
+    updatedCharts[index] = { ...updatedCharts[index], ...chart };
+    
+    setReportDefinition({
+      ...reportDefinition,
+      charts: updatedCharts,
+    });
+  };
+  
+  // 删除图表
+  const deleteChart = (index: number) => {
+    const updatedCharts = reportDefinition.charts.filter((_, i) => i !== index);
+    
+    setReportDefinition({
+      ...reportDefinition,
+      charts: updatedCharts,
+    });
+  };
+  
+  // 保存报表
+  const handleSave = async () => {
+    if (!reportDefinition.name) {
+      toast.error('请输入报表名称');
+      return;
+    }
+    
+    if (!reportDefinition.dataSource) {
+      toast.error('请选择数据源');
+      return;
+    }
+    
+    if (selectedFields.length === 0) {
+      toast.error('请至少选择一个字段');
+      return;
+    }
+    
+    try {
+      setIsSaving(true);
+      const finalReport = {
+        ...reportDefinition,
+        fields: selectedFields,
+      };
+      
+      await onSave(finalReport);
+      toast.success('报表已保存');
+      setIsOpen(false);
+    } catch (error) {
+      console.error('保存报表失败:', error);
+      toast.error('保存失败，请重试');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+  
+  // 重置表单
+  const resetForm = () => {
+    setReportDefinition({
+      id: `report-${Date.now()}`,
+      name: '',
+      description: '',
+      dataSource: '',
+      fields: [],
+      charts: [],
+    });
+    setSelectedFields([]);
+    setActiveTab('fields');
+  };
+  
+  // 打开对话框时重置表单
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open);
+    if (!open) {
+      resetForm();
+    }
+  };
+  
+  return (
+    <>
+      <Button onClick={() => setIsOpen(true)}>
+        新建报表
+      </Button>
+      
+      <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>创建自定义报表</DialogTitle>
+            <DialogDescription>
+              通过拖拽字段和配置图表来创建您的自定义报表
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="flex-1 overflow-auto">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="basic">基本信息</TabsTrigger>
+                <TabsTrigger value="fields">字段配置</TabsTrigger>
+                <TabsTrigger value="charts">图表配置</TabsTrigger>
+                <TabsTrigger value="schedule">计划任务</TabsTrigger>
+              </TabsList>
+              
+              {/* 基本信息标签页 */}
+              <TabsContent value="basic" className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="report-name">报表名称</Label>
+                    <Input
+                      id="report-name"
+                      placeholder="输入报表名称"
+                      value={reportDefinition.name}
+                      onChange={(e) => setReportDefinition({
+                        ...reportDefinition,
+                        name: e.target.value
+                      })}
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="data-source">数据源</Label>
+                    <Select
+                      value={reportDefinition.dataSource}
+                      onValueChange={(value) => setReportDefinition({
+                        ...reportDefinition,
+                        dataSource: value
+                      })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="选择数据源" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableDataSources.map(source => (
+                          <SelectItem key={source.id} value={source.id}>
+                            {source.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="report-description">报表描述</Label>
+                  <Input
+                    id="report-description"
+                    placeholder="输入报表描述（可选）"
+                    value={reportDefinition.description}
+                    onChange={(e) => setReportDefinition({
+                      ...reportDefinition,
+                      description: e.target.value
+                    })}
+                  />
+                </div>
+              </TabsContent>
+              
+              {/* 字段配置标签页 */}
+              <TabsContent value="fields" className="space-y-4">
+                <div className="grid grid-cols-2 gap-4 h-64">
+                  {/* 可用字段列表 */}
+                  <Card>
+                    <CardContent className="p-4">
+                      <h4 className="font-medium mb-2">可用字段</h4>
+                      <DragDropContext onDragEnd={handleFieldDragEnd}>
+                        <Droppable droppableId="available-fields">
+                          {(provided) => (
+                            <div
+                              {...provided.droppableProps}
+                              ref={provided.innerRef}
+                              className="space-y-1"
+                            >
+                              {availableFields.map((field, index) => (
+                                <Draggable
+                                  key={field.id}
+                                  draggableId={field.id}
+                                  index={index}
+                                >
+                                  {(provided) => (
+                                    <div
+                                      ref={provided.innerRef}
+                                      {...provided.draggableProps}
+                                      {...provided.dragHandleProps}
+                                      className="p-2 border rounded text-sm cursor-move hover:bg-gray-50"
+                                    >
+                                      <div className="flex justify-between items-center">
+                                        <span>{field.name}</span>
+                                        <Badge variant="outline" className="text-xs">
+                                          {field.type}
+                                        </Badge>
+                                      </div>
+                                    </div>
+                                  )}
+                                </Draggable>
+                              ))}
+                              {provided.placeholder}
+                            </div>
+                          )}
+                        </Droppable>
+                      </DragDropContext>
+                    </CardContent>
+                  </Card>
+                  
+                  {/* 已选字段列表 */}
+                  <Card>
+                    <CardContent className="p-4">
+                      <h4 className="font-medium mb-2">已选字段</h4>
+                      <DragDropContext onDragEnd={handleFieldDragEnd}>
+                        <Droppable droppableId="selected-fields">
+                          {(provided) => (
+                            <div
+                              {...provided.droppableProps}
+                              ref={provided.innerRef}
+                              className="space-y-1"
+                            >
+                              {selectedFields.map((fieldId, index) => {
+                                const field = availableFields.find(f => f.id === fieldId);
+                                if (!field) return null;
+                                
+                                return (
+                                  <Draggable
+                                    key={field.id}
+                                    draggableId={field.id}
+                                    index={index}
+                                  >
+                                    {(provided) => (
+                                      <div
+                                        ref={provided.innerRef}
+                                        {...provided.draggableProps}
+                                        {...provided.dragHandleProps}
+                                        className="p-2 border rounded text-sm cursor-move hover:bg-gray-50"
+                                      >
+                                        <div className="flex justify-between items-center">
+                                          <span>{field.name}</span>
+                                          <div className="flex items-center gap-1">
+                                            <Badge variant="outline" className="text-xs">
+                                              {field.type}
+                                            </Badge>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-4 w-4"
+                                              onClick={() => setSelectedFields(
+                                                selectedFields.filter(id => id !== fieldId)
+                                              )}
+                                            >
+                                              ×
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </Draggable>
+                                );
+                              })}
+                              {provided.placeholder}
+                              
+                              {selectedFields.length === 0 && (
+                                <div className="text-center text-gray-500 py-8">
+                                  <p>拖拽字段到这里</p>
+                                  <p className="text-xs">或双击字段添加</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </Droppable>
+                      </DragDropContext>
+                    </CardContent>
+                  </Card>
+                </div>
+                
+                <div className="text-sm text-gray-500">
+                  <p>提示：拖拽字段到右侧区域，或双击字段快速添加</p>
+                </div>
+              </TabsContent>
+              
+              {/* 图表配置标签页 */}
+              <TabsContent value="charts" className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <h4 className="font-medium">图表配置</h4>
+                  <Button onClick={addChart} size="sm">
+                    添加图表
+                  </Button>
+                </div>
+                
+                {reportDefinition.charts.length === 0 ? (
+                  <Card>
+                    <CardContent className="p-8 text-center">
+                      <p className="text-gray-500">暂无图表配置</p>
+                      <Button variant="outline" onClick={addChart} className="mt-2">
+                        添加第一个图表
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="space-y-4">
+                    {reportDefinition.charts.map((chart, index) => (
+                      <Card key={chart.id}>
+                        <CardContent className="p-4">
+                          <div className="flex justify-between items-start mb-4">
+                            <div className="flex items-center gap-2">
+                              <Input
+                                placeholder="图表标题"
+                                value={chart.title}
+                                onChange={(e) => updateChart(index, { title: e.target.value })}
+                                className="font-medium"
+                              />
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => deleteChart(index)}
+                            >
+                              ×
+                            </Button>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label>图表类型</Label>
+                              <Select
+                                value={chart.type}
+                                onValueChange={(value) => updateChart(index, { 
+                                  type: value as ChartDefinition['type'] 
+                                })}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="bar">柱状图</SelectItem>
+                                  <SelectItem value="line">折线图</SelectItem>
+                                  <SelectItem value="pie">饼图</SelectItem>
+                                  <SelectItem value="area">面积图</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            
+                            <div className="space-y-2">
+                              <Label>X轴字段</Label>
+                              <Select
+                                value={chart.xAxis || ''}
+                                onValueChange={(value) => updateChart(index, { xAxis: value })}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="选择X轴字段" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {selectedFields.map(fieldId => {
+                                    const field = availableFields.find(f => f.id === fieldId);
+                                    return field ? (
+                                      <SelectItem key={field.id} value={field.id}>
+                                        {field.name}
+                                      </SelectItem>
+                                    ) : null;
+                                  })}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                          
+                          <div className="space-y-2 mt-4">
+                            <Label>Y轴字段</Label>
+                            <div className="space-y-2">
+                              {(chart.yAxis || []).map((axis, axisIndex) => (
+                                <div key={axisIndex} className="flex gap-2">
+                                  <Select
+                                    value={axis}
+                                    onValueChange={(value) => {
+                                      const newYAxis = [...(chart.yAxis || [])];
+                                      newYAxis[axisIndex] = value;
+                                      updateChart(index, { yAxis: newYAxis });
+                                    }}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {selectedFields.map(fieldId => {
+                                        const field = availableFields.find(f => f.id === fieldId);
+                                        return field ? (
+                                          <SelectItem key={field.id} value={field.id}>
+                                            {field.name}
+                                          </SelectItem>
+                                        ) : null;
+                                      })}
+                                    </SelectContent>
+                                  </Select>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => {
+                                      const newYAxis = chart.yAxis?.filter((_, i) => i !== axisIndex);
+                                      updateChart(index, { yAxis: newYAxis });
+                                    }}
+                                  >
+                                    ×
+                                  </Button>
+                                </div>
+                              ))}
+                              
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const newYAxis = [...(chart.yAxis || []), ''];
+                                  updateChart(index, { yAxis: newYAxis });
+                                }}
+                              >
+                                添加Y轴字段
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+              
+              {/* 计划任务标签页 */}
+              <TabsContent value="schedule" className="space-y-4">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="enable-schedule"
+                      checked={reportDefinition.schedule?.enabled || false}
+                      onChange={(e) => setReportDefinition({
+                        ...reportDefinition,
+                        schedule: {
+                          ...reportDefinition.schedule,
+                          enabled: e.target.checked,
+                          frequency: reportDefinition.schedule?.frequency || 'daily'
+                        }
+                      })}
+                    />
+                    <Label htmlFor="enable-schedule">启用计划任务</Label>
+                  </div>
+                  
+                  {reportDefinition.schedule?.enabled && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>执行频率</Label>
+                        <Select
+                          value={reportDefinition.schedule?.frequency || 'daily'}
+                          onValueChange={(value) => setReportDefinition({
+                            ...reportDefinition,
+                            schedule: {
+                              ...reportDefinition.schedule!,
+                              frequency: value as 'daily' | 'weekly' | 'monthly'
+                            }
+                          })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="daily">每天</SelectItem>
+                            <SelectItem value="weekly">每周</SelectItem>
+                            <SelectItem value="monthly">每月</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label>执行时间</Label>
+                        <Input
+                          type="time"
+                          value={reportDefinition.schedule?.time || '09:00'}
+                          onChange={(e) => setReportDefinition({
+                            ...reportDefinition,
+                            schedule: {
+                              ...reportDefinition.schedule!,
+                              time: e.target.value
+                            }
+                          })}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={handleSave} disabled={isSaving}>
+              {isSaving ? '保存中...' : '保存报表'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// 4. 仪表板布局组件 (components/data-visualization/dashboard-layout.tsx)
+'use client';
+
+import React, { useState, useCallback } from 'react';
+import { Layout, Responsive, WidthProvider } from 'react-grid-layout';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { 
+  IconPlus, 
+  IconSettings, 
+  IconLayoutGrid, 
+  IconEdit,
+  IconTrash
+} from '@/components/ui/icons';
+
+const ResponsiveGridLayout = WidthProvider(Responsive);
+
+// 仪表板项定义
+interface DashboardItem {
+  i: string;
+  title: string;
+  type: 'chart' | 'table' | 'metric';
+  config: any;
+  data?: any[];
+}
+
+// 仪表板属性
+interface DashboardLayoutProps {
+  initialItems?: DashboardItem[];
+  initialLayout?: Layout[];
+  onLayoutChange?: (layout: Layout[]) => void;
+  onItemsChange?: (items: DashboardItem[]) => void;
+  editable?: boolean;
+}
+
+export function DashboardLayout({
+  initialItems = [],
+  initialLayout = [],
+  onLayoutChange,
+  onItemsChange,
+  editable = false,
+}: DashboardLayoutProps) {
+  const [items, setItems] = useState<DashboardItem[]>(initialItems);
+  const [layout, setLayout] = useState<Layout[]>(initialLayout);
+  const [isEditing, setIsEditing] = useState(editable);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  
+  // 处理布局变化
+  const handleLayoutChange = useCallback((currentLayout: Layout[]) => {
+    setLayout(currentLayout);
+    onLayoutChange?.(currentLayout);
+  }, [onLayoutChange]);
+  
+  // 添加新组件
+  const addItem = (type: DashboardItem['type'], config: any) => {
+    const newItem: DashboardItem = {
+      i: `item-${Date.now()}`,
+      title: `新${type === 'chart' ? '图表' : type === 'table' ? '表格' : '指标'}`,
+      type,
+      config,
+    };
+    
+    const newItems = [...items, newItem];
+    setItems(newItems);
+    onItemsChange?.(newItems);
+    
+    // 为新项添加布局
+    const newLayout: Layout = {
+      i: newItem.i,
+      x: (layout.length * 2) % 12,
+      y: Infinity,
+      w: 4,
+      h: 3,
+    };
+    
+    const updatedLayout = [...layout, newLayout];
+    setLayout(updatedLayout);
+    onLayoutChange?.(updatedLayout);
+    
+    setAddDialogOpen(false);
+  };
+  
+  // 删除组件
+  const removeItem = (itemId: string) => {
+    const newItems = items.filter(item => item.i !== itemId);
+    setItems(newItems);
+    onItemsChange?.(newItems);
+    
+    const newLayout = layout.filter(item => item.i !== itemId);
+    setLayout(newLayout);
+    onLayoutChange?.(newLayout);
+  };
+  
+  // 更新组件配置
+  const updateItem = (itemId: string, updates: Partial<DashboardItem>) => {
+    const newItems = items.map(item => 
+      item.i === itemId ? { ...item, ...updates } : item
+    );
+    setItems(newItems);
+    onItemsChange?.(newItems);
+  };
+  
+  // 渲染单个仪表板项
+  const renderDashboardItem = (item: DashboardItem) => {
+    const { type, title, config, data } = item;
+    
+    return (
+      <Card className="h-full w-full overflow-hidden">
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm">{title}</CardTitle>
+            {isEditing && (
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => {/* 打开编辑对话框 */}}
+                >
+                  <IconEdit className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-destructive"
+                  onClick={() => removeItem(item.i)}
+                >
+                  <IconTrash className="h-3 w-3" />
+                </Button>
+              </div>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="p-0 flex-1">
+          {type === 'chart' && (
+            <DataVisualizationChart
+              data={data || []}
+              config={config}
+              dimensions={{ height: 200 }}
+            />
+          )}
+          {type === 'metric' && (
+            <div className="flex items-center justify-center h-full p-4">
+              <div className="text-center">
+                <div className="text-3xl font-bold text-primary">
+                  {config.value || '0'}
+                </div>
+                <div className="text-sm text-muted-foreground mt-1">
+                  {config.label || '指标'}
+                </div>
+              </div>
+            </div>
+          )}
+          {type === 'table' && (
+            <div className="p-2 text-sm">
+              <p>表格组件预览</p>
+              {/* 这里可以集成 PivotTable 组件 */}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+  
+  return (
+    <div className="w-full">
+      {/* 工具栏 */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Button
+            variant={isEditing ? "default" : "outline"}
+            size="sm"
+            onClick={() => setIsEditing(!isEditing)}
+          >
+            <IconEdit className="h-4 w-4 mr-1" />
+            {isEditing ? '退出编辑' : '编辑布局'}
+          </Button>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm">
+                <IconPlus className="h-4 w-4 mr-1" />
+                添加组件
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>添加仪表板组件</DialogTitle>
+                <DialogDescription>
+                  选择要添加到仪表板的组件类型
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid grid-cols-2 gap-4 py-4">
+                <Card 
+                  className="cursor-pointer hover:bg-accent"
+                  onClick={() => addItem('chart', { type: 'bar' })}
+                >
+                  <CardContent className="p-4 text-center">
+                    <div className="text-2xl mb-2">📊</div>
+                    <p>图表</p>
+                  </CardContent>
+                </Card>
+                <Card 
+                  className="cursor-pointer hover:bg-accent"
+                  onClick={() => addItem('table', {})}
+                >
+                  <CardContent className="p-4 text-center">
+                    <div className="text-2xl mb-2">📋</div>
+                    <p>数据表格</p>
+                  </CardContent>
+                </Card>
+                <Card 
+                  className="cursor-pointer hover:bg-accent"
+                  onClick={() => addItem('metric', { value: 0, label: '指标' })}
+                >
+                  <CardContent className="p-4 text-center">
+                    <div className="text-2xl mb-2">🔢</div>
+                    <p>指标卡</p>
+                  </CardContent>
+                </Card>
+                <Card className="cursor-pointer hover:bg-accent opacity-50">
+                  <CardContent className="p-4 text-center">
+                    <div className="text-2xl mb-2">📈</div>
+                    <p>更多类型...</p>
+                  </CardContent>
+                </Card>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+      
+      {/* 响应式网格布局 */}
+      <ResponsiveGridLayout
+        className="layout"
+        layouts={{ lg: layout }}
+        breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
+        cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
+        rowHeight={100}
+        isDraggable={isEditing}
+        isResizable={isEditing}
+        onLayoutChange={handleLayoutChange}
+        margin={[16, 16]}
+        containerPadding={[0, 0]}
+      >
+        {items.map(item => (
+          <div key={item.i} className="bg-background rounded-lg">
+            {renderDashboardItem(item)}
+          </div>
+        ))}
+      </ResponsiveGridLayout>
+      
+      {items.length === 0 && (
+        <Card className="text-center p-12">
+          <CardContent>
+            <IconLayoutGrid className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-medium mb-2">仪表板为空</h3>
+            <p className="text-muted-foreground mb-4">
+              添加一些组件来开始构建您的仪表板
+            </p>
+            <Button onClick={() => setAddDialogOpen(true)}>
+              <IconPlus className="h-4 w-4 mr-1" />
+              添加第一个组件
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// 5. 数据可视化工具库 (lib/data-visualization-utils.ts)
+export class DataVisualizationUtils {
+  // 数据聚合方法
+  static aggregateData(
+    data: any[],
+    groupBy: string,
+    operations: { field: string; operation: 'sum' | 'avg' | 'count' | 'min' | 'max' }[]
+  ): any[] {
+    const grouped = data.reduce((acc, item) => {
+      const key = item[groupBy];
+      if (!acc[key]) {
+        acc[key] = { [groupBy]: key, _count: 0 };
+      }
+      
+      operations.forEach(({ field, operation }) => {
+        const value = item[field];
+        const current = acc[key][`${field}_${operation}`] || 0;
+        
+        switch (operation) {
+          case 'sum':
+            acc[key][`${field}_sum`] = current + (Number(value) || 0);
+            break;
+          case 'avg':
+            acc[key][`${field}_avg`] = current + (Number(value) || 0);
+            break;
+          case 'count':
+            acc[key][`${field}_count`] = current + 1;
+            break;
+          case 'min':
+            if (current === 0 || Number(value) < current) {
+              acc[key][`${field}_min`] = Number(value) || 0;
+            }
+            break;
+          case 'max':
+            if (Number(value) > current) {
+              acc[key][`${field}_max`] = Number(value) || 0;
+            }
+            break;
+        }
+      });
+      
+      acc[key]._count++;
+      return acc;
+    }, {});
+    
+    // 处理平均值
+    Object.values(grouped).forEach((group: any) => {
+      operations.forEach(({ field, operation }) => {
+        if (operation === 'avg') {
+          group[`${field}_avg`] = group[`${field}_avg`] / group._count;
+        }
+      });
+    });
+    
+    return Object.values(grouped);
+  }
+  
+  // 数据过滤方法
+  static filterData(
+    data: any[],
+    filters: { field: string; operator: string; value: any }[]
+  ): any[] {
+    return data.filter(item => {
+      return filters.every(filter => {
+        const itemValue = item[filter.field];
+        
+        switch (filter.operator) {
+          case 'equals':
+            return itemValue === filter.value;
+          case 'notEquals':
+            return itemValue !== filter.value;
+          case 'contains':
+            return String(itemValue).includes(String(filter.value));
+          case 'greaterThan':
+            return Number(itemValue) > Number(filter.value);
+          case 'lessThan':
+            return Number(itemValue) < Number(filter.value);
+          case 'between':
+            return Number(itemValue) >= Number(filter.value[0]) && 
+                   Number(itemValue) <= Number(filter.value[1]);
+          default:
+            return true;
+        }
+      });
+    });
+  }
+  
+  // 数据排序方法
+  static sortData(
+    data: any[],
+    sortBy: { field: string; direction: 'asc' | 'desc' }[]
+  ): any[] {
+    return [...data].sort((a, b) => {
+      for (const sort of sortBy) {
+        const aValue = a[sort.field];
+        const bValue = b[sort.field];
+        
+        if (aValue < bValue) return sort.direction === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sort.direction === 'asc' ? 1 : -1;
+      }
+      return 0;
+    });
+  }
+  
+  // 生成颜色方案
+  static generateColorScheme(count: number, scheme: string = 'default'): string[] {
+    const schemes: { [key: string]: string[] } = {
+      default: DEFAULT_COLORS,
+      pastel: [
+        '#AEC6CF', '#FFB3BA', '#BAFFC9', '#FFDFBA', '#B5C9FF',
+        '#E6C9FF', '#FFC9F0', '#C9FFF0', '#FFFAC9', '#D4C9FF'
+      ],
+      vibrant: [
+        '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
+        '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9'
+      ],
+      monochrome: [
+        '#8B93FF', '#6F78FF', '#535DFF', '#3742FF', '#1B27FF',
+        '#0008FF', '#0006CC', '#000499', '#000266', '#000133'
+      ]
+    };
+    
+    const selectedScheme = schemes[scheme] || schemes.default;
+    const colors: string[] = [];
+    
+    for (let i = 0; i < count; i++) {
+      colors.push(selectedScheme[i % selectedScheme.length]);
+    }
+    
+    return colors;
+  }
+  
+  // 格式化数字
+  static formatNumber(value: number, format: string = 'default'): string {
+    const formats: { [key: string]: Intl.NumberFormat } = {
+      currency: new Intl.NumberFormat('zh-CN', {
+        style: 'currency',
+        currency: 'CNY'
+      }),
+      percent: new Intl.NumberFormat('zh-CN', {
+        style: 'percent',
+        minimumFractionDigits: 2
+      }),
+      compact: new Intl.NumberFormat('zh-CN', {
+        notation: 'compact'
+      }),
+      default: new Intl.NumberFormat('zh-CN')
+    };
+    
+    const formatter = formats[format] || formats.default;
+    return formatter.format(value);
+  }
+  
+  // 检测数据类型
+  static detectDataType(value: any): 'string' | 'number' | 'date' | 'boolean' {
+    if (typeof value === 'boolean') return 'boolean';
+    if (typeof value === 'number') return 'number';
+    if (value instanceof Date) return 'date';
+    if (!isNaN(Date.parse(value))) return 'date';
+    if (!isNaN(Number(value))) return 'number';
+    return 'string';
+  }
+}
+
+export default {
+  DataVisualizationChart,
+  PivotTable,
+  ReportBuilder,
+  DashboardLayout,
+  DataVisualizationUtils
+};
+——————————————————————————————————————————
+1. DataVisualizationChart - 支持多种图表类型的高级图表组件
+2. PivotTable - 功能丰富的数据透视表组件
+3. ReportBuilder - 拖拽式自定义报表生成器
+4. DashboardLayout - 可拖拽的仪表板布局组件
+5. DataVisualizationUtils - 数据处理和格式化工具类
+主要特性：
+- 响应式设计
+- TypeScript 类型安全
+- 丰富的交互功能
+- 可扩展的架构
+- 现代化的 UI/UX
+使用示例：
+——————————————————————————————————————————
+import { DataVisualizationChart, PivotTable } from '@/components/data-visualization';
+
+// 图表使用
+<DataVisualizationChart
+  data={salesData}
+  config={{
+    type: 'bar',
+    xAxis: 'month',
+    yAxis: 'revenue',
+    colorScheme: ['#3366CC', '#DC3912']
+  }}
+  title="月度销售数据"
+/>
+
+// 表格使用
+<PivotTable
+  data={salesData}
+  defaultColumns={columns}
+  title="销售明细"
+/>

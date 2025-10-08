@@ -1,0 +1,1557 @@
+### 工作流引擎
+当前问题：
+系统缺乏灵活的工作流定义和执行能力，业务流程硬编码，审批流转功能简单，无法支持复杂业务规则和动态流程变更。
+改进建议：
+1. 实现可配置化工作流定义引擎
+2. 支持多级审批和并行审批流程
+3. 添加动态表单和条件分支功能
+4. 实现工作流监控和统计分析
+5. 提供工作流可视化设计工具
+技术实现方案：
+————————————————————————————————————————————
+// 1. 工作流定义模型 (src/models/workflow.model.ts)
+export interface WorkflowDefinition {
+  id: string;
+  name: string;
+  description?: string;
+  version: number;
+  status: 'draft' | 'active' | 'deprecated';
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  variables: WorkflowVariable[];
+  metadata?: Record<string, any>;
+}
+
+export interface WorkflowNode {
+  id: string;
+  type: 'start' | 'end' | 'task' | 'approval' | 'condition' | 'parallel' | 'gateway' | 'timer' | 'webhook' | 'script' | 'custom';
+  name: string;
+  description?: string;
+  config: Record<string, any>;
+  position?: { x: number; y: number };
+  metadata?: Record<string, any>;
+}
+
+export interface WorkflowEdge {
+  id: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  condition?: {
+    expression: string;
+    description?: string;
+  };
+  metadata?: Record<string, any>;
+}
+
+export interface WorkflowVariable {
+  id: string;
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'date' | 'array' | 'object';
+  defaultValue?: any;
+  required: boolean;
+  description?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface WorkflowInstance {
+  id: string;
+  workflowId: string;
+  workflowVersion: number;
+  status: 'running' | 'completed' | 'failed' | 'canceled' | 'suspended';
+  startedAt: Date;
+  completedAt?: Date;
+  startedBy: string;
+  currentNodeIds: string[];
+  variables: Record<string, any>;
+  history: WorkflowHistoryEntry[];
+  metadata?: Record<string, any>;
+}
+
+export interface WorkflowHistoryEntry {
+  id: string;
+  timestamp: Date;
+  nodeId: string;
+  nodeName: string;
+  nodeType: string;
+  action: 'entered' | 'completed' | 'failed' | 'skipped' | 'rejected';
+  actor?: string;
+  comment?: string;
+  data?: any;
+}
+
+export interface WorkflowTask {
+  id: string;
+  instanceId: string;
+  nodeId: string;
+  nodeName: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'rejected' | 'canceled';
+  assignees: string[];
+  assigneeType: 'user' | 'role' | 'department' | 'dynamic';
+  createdAt: Date;
+  updatedAt: Date;
+  dueDate?: Date;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  formData?: any;
+  comments?: WorkflowComment[];
+  metadata?: Record<string, any>;
+}
+
+export interface WorkflowComment {
+  id: string;
+  taskId: string;
+  userId: string;
+  content: string;
+  timestamp: Date;
+  attachments?: WorkflowAttachment[];
+}
+
+export interface WorkflowAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  url: string;
+  createdAt: Date;
+  createdBy: string;
+}
+
+// 2. 工作流执行引擎 (src/services/workflow/workflow-engine.service.ts)
+import { v4 as uuidv4 } from 'uuid';
+import { logger } from '../../config/logger';
+import { AppError } from '../../utils/app-error';
+import { ErrorCode } from '../../constants/error-codes';
+import { redis } from '../../config/redis';
+import { EventEmitter } from 'events';
+
+export class WorkflowEngineService extends EventEmitter {
+  // 启动工作流
+  async startWorkflow(
+    workflowId: string,
+    initiator: string,
+    variables: Record<string, any>,
+    options: {
+      businessKey?: string;
+      priority?: string;
+      dueDate?: Date;
+    } = {}
+  ): Promise<WorkflowInstance> {
+    try {
+      // 1. 加载工作流定义
+      const workflowDefinition = await this.getLatestActiveWorkflowDefinition(workflowId);
+      if (!workflowDefinition) {
+        throw new AppError(`Workflow definition not found: ${workflowId}`, 404, ErrorCode.NOT_FOUND);
+      }
+      
+      // 2. 验证输入变量
+      this.validateWorkflowVariables(workflowDefinition, variables);
+      
+      // 3. 创建工作流实例
+      const instance: WorkflowInstance = {
+        id: uuidv4(),
+        workflowId: workflowDefinition.id,
+        workflowVersion: workflowDefinition.version,
+        status: 'running',
+        startedAt: new Date(),
+        startedBy: initiator,
+        currentNodeIds: [],
+        variables: { ...variables },
+        history: [],
+        metadata: {
+          businessKey: options.businessKey,
+          priority: options.priority || 'medium',
+          dueDate: options.dueDate,
+        },
+      };
+      
+      // 4. 保存工作流实例
+      await this.saveWorkflowInstance(instance);
+      
+      // 5. 执行开始节点
+      const startNode = workflowDefinition.nodes.find(node => node.type === 'start');
+      if (!startNode) {
+        throw new AppError(`No start node found in workflow: ${workflowId}`, 400, ErrorCode.BUSINESS_ERROR);
+      }
+      
+      // 6. 添加历史记录
+      const historyEntry: WorkflowHistoryEntry = {
+        id: uuidv4(),
+        timestamp: new Date(),
+        nodeId: startNode.id,
+        nodeName: startNode.name,
+        nodeType: startNode.type,
+        action: 'entered',
+        actor: initiator,
+      };
+      
+      instance.history.push(historyEntry);
+      instance.currentNodeIds = [startNode.id];
+      
+      // 7. 保存更新后的实例
+      await this.saveWorkflowInstance(instance);
+      
+      // 8. 触发事件
+      this.emit('workflow:started', {
+        instanceId: instance.id,
+        workflowId: instance.workflowId,
+        initiator,
+      });
+      
+      // 9. 执行后续节点
+      await this.progressWorkflow(instance.id, startNode.id);
+      
+      return instance;
+    } catch (error) {
+      logger.error('Failed to start workflow', {
+        workflowId,
+        initiator,
+        variables,
+        error,
+      });
+      throw error;
+    }
+  }
+  
+  // 推进工作流执行
+  async progressWorkflow(instanceId: string, completedNodeId: string, data: any = {}, actor: string = 'system'): Promise<WorkflowInstance> {
+    try {
+      // 1. 加载工作流实例
+      const instance = await this.getWorkflowInstance(instanceId);
+      if (!instance) {
+        throw new AppError(`Workflow instance not found: ${instanceId}`, 404, ErrorCode.NOT_FOUND);
+      }
+      
+      if (instance.status !== 'running') {
+        throw new AppError(`Cannot progress non-running workflow: ${instanceId}, status: ${instance.status}`, 400, ErrorCode.INVALID_OPERATION);
+      }
+      
+      // 2. 验证节点是否是当前活动节点
+      if (!instance.currentNodeIds.includes(completedNodeId)) {
+        throw new AppError(`Node ${completedNodeId} is not a current active node in workflow: ${instanceId}`, 400, ErrorCode.INVALID_OPERATION);
+      }
+      
+      // 3. 加载工作流定义
+      const workflowDefinition = await this.getWorkflowDefinition(instance.workflowId, instance.workflowVersion);
+      if (!workflowDefinition) {
+        throw new AppError(`Workflow definition not found: ${instance.workflowId} v${instance.workflowVersion}`, 404, ErrorCode.NOT_FOUND);
+      }
+      
+      // 4. 获取完成的节点
+      const completedNode = workflowDefinition.nodes.find(node => node.id === completedNodeId);
+      if (!completedNode) {
+        throw new AppError(`Node not found in workflow definition: ${completedNodeId}`, 404, ErrorCode.NOT_FOUND);
+      }
+      
+      // 5. 添加完成历史记录
+      const historyEntry: WorkflowHistoryEntry = {
+        id: uuidv4(),
+        timestamp: new Date(),
+        nodeId: completedNodeId,
+        nodeName: completedNode.name,
+        nodeType: completedNode.type,
+        action: 'completed',
+        actor,
+        data,
+      };
+      
+      instance.history.push(historyEntry);
+      
+      // 6. 更新变量（如果有）
+      if (data && typeof data === 'object') {
+        instance.variables = {
+          ...instance.variables,
+          ...data,
+        };
+      }
+      
+      // 7. 从当前节点中移除已完成的节点
+      instance.currentNodeIds = instance.currentNodeIds.filter(id => id !== completedNodeId);
+      
+      // 8. 查找下一个节点
+      const outgoingEdges = workflowDefinition.edges.filter(edge => edge.sourceNodeId === completedNodeId);
+      if (outgoingEdges.length === 0) {
+        // 如果没有出口，且没有其他活动节点，则工作流完成
+        if (instance.currentNodeIds.length === 0) {
+          instance.status = 'completed';
+          instance.completedAt = new Date();
+          
+          // 添加工作流完成历史
+          const completeHistoryEntry: WorkflowHistoryEntry = {
+            id: uuidv4(),
+            timestamp: new Date(),
+            nodeId: 'workflow',
+            nodeName: 'Workflow',
+            nodeType: 'workflow',
+            action: 'completed',
+            actor,
+          };
+          
+          instance.history.push(completeHistoryEntry);
+          
+          // 触发工作流完成事件
+          this.emit('workflow:completed', {
+            instanceId: instance.id,
+            workflowId: instance.workflowId,
+          });
+        }
+      } else {
+        // 处理每个出口边
+        for (const edge of outgoingEdges) {
+          // 评估条件（如果有）
+          if (edge.condition) {
+            const conditionMet = await this.evaluateCondition(edge.condition.expression, instance.variables);
+            if (!conditionMet) {
+              continue; // 条件不满足，跳过此边
+            }
+          }
+          
+          // 获取目标节点
+          const targetNode = workflowDefinition.nodes.find(node => node.id === edge.targetNodeId);
+          if (!targetNode) {
+            logger.error(`Target node not found: ${edge.targetNodeId}`);
+            continue;
+          }
+          
+          // 添加目标节点进入历史
+          const enterHistoryEntry: WorkflowHistoryEntry = {
+            id: uuidv4(),
+            timestamp: new Date(),
+            nodeId: targetNode.id,
+            nodeName: targetNode.name,
+            nodeType: targetNode.type,
+            action: 'entered',
+            actor,
+          };
+          
+          instance.history.push(enterHistoryEntry);
+          
+          // 将目标节点添加到当前节点列表
+          instance.currentNodeIds.push(targetNode.id);
+          
+          // 根据节点类型执行相应操作
+          switch (targetNode.type) {
+            case 'end':
+              // 结束节点 - 如果没有其他活动节点，则完成工作流
+              if (instance.currentNodeIds.length === 1) { // 只有end节点
+                instance.status = 'completed';
+                instance.completedAt = new Date();
+                
+                // 添加工作流完成历史
+                const completeHistoryEntry: WorkflowHistoryEntry = {
+                  id: uuidv4(),
+                  timestamp: new Date(),
+                  nodeId: 'workflow',
+                  nodeName: 'Workflow',
+                  nodeType: 'workflow',
+                  action: 'completed',
+                  actor,
+                };
+                
+                instance.history.push(completeHistoryEntry);
+                
+                // 触发工作流完成事件
+                this.emit('workflow:completed', {
+                  instanceId: instance.id,
+                  workflowId: instance.workflowId,
+                });
+              }
+              break;
+              
+            case 'task':
+              // 任务节点 - 创建任务
+              await this.createWorkflowTask(instance, targetNode);
+              break;
+              
+            case 'approval':
+              // 审批节点 - 创建审批任务
+              await this.createApprovalTask(instance, targetNode);
+              break;
+              
+            case 'condition':
+              // 条件节点 - 自动执行条件评估并继续
+              await this.handleConditionNode(instance, targetNode);
+              break;
+              
+            case 'parallel':
+              // 并行节点 - 创建多个分支
+              await this.handleParallelNode(instance, targetNode);
+              break;
+              
+            case 'gateway':
+              // 网关节点 - 根据配置汇聚或分流
+              await this.handleGatewayNode(instance, targetNode);
+              break;
+              
+            case 'timer':
+              // 定时器节点 - 设置延时执行
+              await this.scheduleTimerNode(instance, targetNode);
+              break;
+              
+            case 'webhook':
+              // Webhook节点 - 调用外部API
+              await this.executeWebhookNode(instance, targetNode);
+              break;
+              
+            case 'script':
+              // 脚本节点 - 执行脚本
+              await this.executeScriptNode(instance, targetNode);
+              break;
+              
+            case 'custom':
+              // 自定义节点 - 调用自定义处理器
+              await this.executeCustomNode(instance, targetNode);
+              break;
+              
+            default:
+              logger.warn(`Unhandled node type: ${targetNode.type}`);
+              // 自动完成未知类型节点
+              await this.progressWorkflow(instance.id, targetNode.id, {}, actor);
+          }
+        }
+      }
+      
+      // 9. 保存更新后的实例
+      await this.saveWorkflowInstance(instance);
+      
+      return instance;
+    } catch (error) {
+      logger.error('Failed to progress workflow', {
+        instanceId,
+        completedNodeId,
+        error,
+      });
+      throw error;
+    }
+  }
+  
+  // 处理工作流任务
+  async completeWorkflowTask(
+    taskId: string,
+    action: 'complete' | 'reject',
+    data: any = {},
+    actor: string,
+    comment?: string
+  ): Promise<WorkflowTask> {
+    try {
+      // 1. 加载任务
+      const task = await this.getWorkflowTask(taskId);
+      if (!task) {
+        throw new AppError(`Task not found: ${taskId}`, 404, ErrorCode.NOT_FOUND);
+      }
+      
+      // 2. 验证任务状态
+      if (task.status !== 'pending' && task.status !== 'in_progress') {
+        throw new AppError(`Cannot complete task with status: ${task.status}`, 400, ErrorCode.INVALID_OPERATION);
+      }
+      
+      // 3. 更新任务状态
+      task.status = action === 'complete' ? 'completed' : 'rejected';
+      task.updatedAt = new Date();
+      
+      // 4. 添加评论（如果有）
+      if (comment) {
+        const newComment: WorkflowComment = {
+          id: uuidv4(),
+          taskId: task.id,
+          userId: actor,
+          content: comment,
+          timestamp: new Date(),
+        };
+        
+        if (!task.comments) {
+          task.comments = [];
+        }
+        
+        task.comments.push(newComment);
+      }
+      
+      // 5. 保存任务更新
+      await this.saveWorkflowTask(task);
+      
+      // 6. 推进工作流
+      if (action === 'complete') {
+        // 成功完成任务，继续工作流
+        await this.progressWorkflow(task.instanceId, task.nodeId, data, actor);
+      } else {
+        // 拒绝任务，需要特殊处理（例如，回到上一步或结束工作流）
+        await this.handleTaskRejection(task.instanceId, task.nodeId, data, actor);
+      }
+      
+      // 7. 触发任务完成事件
+      this.emit(`task:${action}d`, {
+        taskId: task.id,
+        instanceId: task.instanceId,
+        nodeId: task.nodeId,
+        actor,
+      });
+      
+      return task;
+    } catch (error) {
+      logger.error('Failed to complete workflow task', {
+        taskId,
+        action,
+        actor,
+        error,
+      });
+      throw error;
+    }
+  }
+  
+  // 其他工作流处理方法
+  // ...
+  
+  // 辅助方法（获取工作流定义、评估条件等）
+  // ...
+}
+
+// 3. 工作流API定义 (src/routes/workflow.routes.ts)
+import express from 'express';
+import { body, param, query } from 'express-validator';
+import { validate } from '../middleware/validation.middleware';
+import { authenticate } from '../middleware/auth.middleware';
+import { WorkflowController } from '../controllers/workflow.controller';
+
+const router = express.Router();
+const controller = new WorkflowController();
+
+// 工作流定义API
+router.post(
+  '/definitions',
+  authenticate,
+  [
+    body('name').isString().notEmpty().withMessage('Workflow name is required'),
+    body('description').optional().isString(),
+    body('nodes').isArray().notEmpty().withMessage('Workflow nodes are required'),
+    body('edges').isArray().notEmpty().withMessage('Workflow edges are required'),
+    body('variables').optional().isArray(),
+  ],
+  validate,
+  controller.createWorkflowDefinition
+);
+
+router.get(
+  '/definitions',
+  authenticate,
+  [
+    query('page').optional().isInt({ min: 1 }),
+    query('limit').optional().isInt({ min: 1, max: 100 }),
+    query('status').optional().isIn(['draft', 'active', 'deprecated']),
+  ],
+  validate,
+  controller.getWorkflowDefinitions
+);
+
+router.get(
+  '/definitions/:id',
+  authenticate,
+  [
+    param('id').isString().notEmpty(),
+    query('version').optional().isInt({ min: 1 }),
+  ],
+  validate,
+  controller.getWorkflowDefinition
+);
+
+router.put(
+  '/definitions/:id',
+  authenticate,
+  [
+    param('id').isString().notEmpty(),
+    body('name').optional().isString(),
+    body('description').optional().isString(),
+    body('nodes').optional().isArray(),
+    body('edges').optional().isArray(),
+    body('variables').optional().isArray(),
+  ],
+  validate,
+  controller.updateWorkflowDefinition
+);
+
+router.patch(
+  '/definitions/:id/status',
+  authenticate,
+  [
+    param('id').isString().notEmpty(),
+    body('status').isIn(['draft', 'active', 'deprecated']),
+  ],
+  validate,
+  controller.updateWorkflowStatus
+);
+
+// 工作流实例API
+router.post(
+  '/instances',
+  authenticate,
+  [
+    body('workflowId').isString().notEmpty(),
+    body('variables').optional().isObject(),
+    body('businessKey').optional().isString(),
+    body('priority').optional().isIn(['low', 'medium', 'high', 'urgent']),
+    body('dueDate').optional().isISO8601(),
+  ],
+  validate,
+  controller.startWorkflow
+);
+
+router.get(
+  '/instances',
+  authenticate,
+  [
+    query('page').optional().isInt({ min: 1 }),
+    query('limit').optional().isInt({ min: 1, max: 100 }),
+    query('status').optional().isIn(['running', 'completed', 'failed', 'canceled', 'suspended']),
+    query('workflowId').optional().isString(),
+    query('initiator').optional().isString(),
+    query('businessKey').optional().isString(),
+    query('startDateFrom').optional().isISO8601(),
+    query('startDateTo').optional().isISO8601(),
+  ],
+  validate,
+  controller.getWorkflowInstances
+);
+
+router.get(
+  '/instances/:id',
+  authenticate,
+  [
+    param('id').isString().notEmpty(),
+  ],
+  validate,
+  controller.getWorkflowInstance
+);
+
+router.post(
+  '/instances/:id/cancel',
+  authenticate,
+  [
+    param('id').isString().notEmpty(),
+    body('reason').optional().isString(),
+  ],
+  validate,
+  controller.cancelWorkflowInstance
+);
+
+// 工作流任务API
+router.get(
+  '/tasks',
+  authenticate,
+  [
+    query('page').optional().isInt({ min: 1 }),
+    query('limit').optional().isInt({ min: 1, max: 100 }),
+    query('status').optional().isIn(['pending', 'in_progress', 'completed', 'rejected', 'canceled']),
+    query('assignee').optional().isString(),
+    query('workflowId').optional().isString(),
+    query('priority').optional().isIn(['low', 'medium', 'high', 'urgent']),
+    query('dueDateFrom').optional().isISO8601(),
+    query('dueDateTo').optional().isISO8601(),
+  ],
+  validate,
+  controller.getWorkflowTasks
+);
+
+router.get(
+  '/tasks/:id',
+  authenticate,
+  [
+    param('id').isString().notEmpty(),
+  ],
+  validate,
+  controller.getWorkflowTask
+);
+
+router.post(
+  '/tasks/:id/claim',
+  authenticate,
+  [
+    param('id').isString().notEmpty(),
+  ],
+  validate,
+  controller.claimWorkflowTask
+);
+
+router.post(
+  '/tasks/:id/unclaim',
+  authenticate,
+  [
+    param('id').isString().notEmpty(),
+  ],
+  validate,
+  controller.unclaimWorkflowTask
+);
+
+router.post(
+  '/tasks/:id/complete',
+  authenticate,
+  [
+    param('id').isString().notEmpty(),
+    body('data').optional().isObject(),
+    body('comment').optional().isString(),
+  ],
+  validate,
+  controller.completeWorkflowTask
+);
+
+router.post(
+  '/tasks/:id/reject',
+  authenticate,
+  [
+    param('id').isString().notEmpty(),
+    body('reason').isString().notEmpty(),
+    body('data').optional().isObject(),
+  ],
+  validate,
+  controller.rejectWorkflowTask
+);
+
+router.post(
+  '/tasks/:id/comment',
+  authenticate,
+  [
+    param('id').isString().notEmpty(),
+    body('content').isString().notEmpty(),
+  ],
+  validate,
+  controller.addWorkflowTaskComment
+);
+
+export default router;
+
+// 4. 工作流前端组件 (components/workflow/workflow-designer.tsx)
+'use client';
+
+import React, { useState, useCallback, useEffect } from 'react';
+import ReactFlow, {
+  addEdge,
+  MiniMap,
+  Controls,
+  Background,
+  useNodesState,
+  useEdgesState,
+  Edge,
+  Node,
+  Connection,
+  NodeChange,
+  EdgeChange,
+  NodeTypes,
+  Panel,
+} from 'reactflow';
+import 'reactflow/dist/style.css';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { toast } from 'sonner';
+
+// 自定义节点类型
+import StartNode from './node-types/start-node';
+import EndNode from './node-types/end-node';
+import TaskNode from './node-types/task-node';
+import ApprovalNode from './node-types/approval-node';
+import ConditionNode from './node-types/condition-node';
+import ParallelNode from './node-types/parallel-node';
+import GatewayNode from './node-types/gateway-node';
+import TimerNode from './node-types/timer-node';
+import WebhookNode from './node-types/webhook-node';
+import ScriptNode from './node-types/script-node';
+
+// 自定义节点类型映射
+const nodeTypes: NodeTypes = {
+  start: StartNode,
+  end: EndNode,
+  task: TaskNode,
+  approval: ApprovalNode,
+  condition: ConditionNode,
+  parallel: ParallelNode,
+  gateway: GatewayNode,
+  timer: TimerNode,
+  webhook: WebhookNode,
+  script: ScriptNode,
+};
+
+interface WorkflowDesignerProps {
+  initialWorkflow?: any;
+  onSave?: (workflow: any) => void;
+  readOnly?: boolean;
+}
+
+export function WorkflowDesigner({ initialWorkflow, onSave, readOnly = false }: WorkflowDesignerProps) {
+  // 工作流基本信息
+  const [name, setName] = useState(initialWorkflow?.name || '');
+  const [description, setDescription] = useState(initialWorkflow?.description || '');
+  
+  // 流程图节点和边
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialWorkflow?.nodes || []);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialWorkflow?.edges || []);
+  
+  // 工作流变量
+  const [variables, setVariables] = useState<any[]>(initialWorkflow?.variables || []);
+  
+  // 对话框状态
+  const [isNodeDialogOpen, setIsNodeDialogOpen] = useState(false);
+  const [isEdgeDialogOpen, setIsEdgeDialogOpen] = useState(false);
+  const [isVariableDialogOpen, setIsVariableDialogOpen] = useState(false);
+  
+  // 当前编辑的元素
+  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
+  const [selectedVariable, setSelectedVariable] = useState<any | null>(null);
+  
+  // 处理节点点击
+  const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    if (readOnly) return;
+    setSelectedNode(node);
+    setIsNodeDialogOpen(true);
+  }, [readOnly]);
+  
+  // 处理边点击
+  const onEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
+    if (readOnly) return;
+    setSelectedEdge(edge);
+    setIsEdgeDialogOpen(true);
+  }, [readOnly]);
+  
+  // 处理连接
+  const onConnect = useCallback((params: Connection) => {
+    if (readOnly) return;
+    setEdges((edges) => addEdge({
+      ...params,
+      type: 'smoothstep',
+      animated: true,
+      style: { stroke: '#555' },
+    }, edges));
+  }, [setEdges, readOnly]);
+  
+  // 添加新节点
+  const addNode = (type: string) => {
+    if (readOnly) return;
+    
+    const newNode: Node = {
+      id: `node_${Date.now()}`,
+      type,
+      position: { x: 100, y: 100 },
+      data: { 
+        label: `New ${type.charAt(0).toUpperCase() + type.slice(1)} Node`,
+        config: {},
+      },
+    };
+    
+    setNodes((nodes) => [...nodes, newNode]);
+  };
+  
+  // 保存工作流
+  const saveWorkflow = () => {
+    if (!name) {
+      toast.error('工作流名称不能为空');
+      return;
+    }
+    
+    if (nodes.length === 0) {
+      toast.error('工作流必须至少包含一个节点');
+      return;
+    }
+    
+    // 构造工作流定义
+    const workflow = {
+      name,
+      description,
+      nodes: nodes.map(node => ({
+        id: node.id,
+        type: node.type,
+        name: node.data.label,
+        description: node.data.description,
+        config: node.data.config,
+        position: node.position,
+      })),
+      edges: edges.map(edge => ({
+        id: edge.id,
+        sourceNodeId: edge.source,
+        targetNodeId: edge.target,
+        condition: edge.data?.condition,
+      })),
+      variables,
+    };
+    
+    onSave?.(workflow);
+    toast.success('工作流已保存');
+  };
+  
+  // 工具栏渲染
+  const renderToolbar = () => (
+    <Panel position="top-left" className="bg-white p-2 rounded-md shadow-md">
+      <div className="flex flex-col gap-2">
+        <p className="font-medium text-sm">添加节点</p>
+        <div className="flex flex-wrap gap-1">
+          <Button size="sm" variant="outline" onClick={() => addNode('start')}>开始</Button>
+          <Button size="sm" variant="outline" onClick={() => addNode('end')}>结束</Button>
+          <Button size="sm" variant="outline" onClick={() => addNode('task')}>任务</Button>
+          <Button size="sm" variant="outline" onClick={() => addNode('approval')}>审批</Button>
+          <Button size="sm" variant="outline" onClick={() => addNode('condition')}>条件</Button>
+          <Button size="sm" variant="outline" onClick={() => addNode('parallel')}>并行</Button>
+          <Button size="sm" variant="outline" onClick={() => addNode('gateway')}>网关</Button>
+          <Button size="sm" variant="outline" onClick={() => addNode('timer')}>定时</Button>
+          <Button size="sm" variant="outline" onClick={() => addNode('webhook')}>调用</Button>
+          <Button size="sm" variant="outline" onClick={() => addNode('script')}>脚本</Button>
+        </div>
+      </div>
+    </Panel>
+  );
+  
+  return (
+    <div className="flex flex-col h-full">
+      {/* 工作流基本信息 */}
+      <div className="bg-white p-4 border-b">
+        <div className="flex justify-between items-center">
+          <div className="flex-1">
+            <Input 
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="工作流名称"
+              className="text-lg font-medium mb-1"
+              disabled={readOnly}
+            />
+            <Input 
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="工作流描述"
+              disabled={readOnly}
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setIsVariableDialogOpen(true)}
+              disabled={readOnly}
+            >
+              管理变量
+            </Button>
+            <Button 
+              onClick={saveWorkflow}
+              disabled={readOnly}
+            >
+              保存工作流
+            </Button>
+          </div>
+        </div>
+      </div>
+      
+      {/* 工作流设计器 */}
+      <div className="flex-1 h-0">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={readOnly ? undefined : onNodesChange}
+          onEdgesChange={readOnly ? undefined : onEdgesChange}
+          onConnect={onConnect}
+          onNodeClick={onNodeClick}
+          onEdgeClick={onEdgeClick}
+          nodeTypes={nodeTypes}
+          fitView
+          attributionPosition="bottom-right"
+          proOptions={{ hideAttribution: true }}
+        >
+          {!readOnly && renderToolbar()}
+          <Background />
+          <Controls />
+          <MiniMap />
+        </ReactFlow>
+      </div>
+      
+      {/* 节点编辑对话框 */}
+      <Dialog open={isNodeDialogOpen} onOpenChange={setIsNodeDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>编辑节点</DialogTitle>
+          </DialogHeader>
+          {selectedNode && (
+            <div className="grid gap-4">
+              <div>
+                <Label htmlFor="node-label">节点名称</Label>
+                <Input
+                  id="node-label"
+                  value={selectedNode.data.label}
+                  onChange={(e) => {
+                    setNodes((nds) =>
+                      nds.map((node) => {
+                        if (node.id === selectedNode.id) {
+                          return {
+                            ...node,
+                            data: { ...node.data, label: e.target.value },
+                          };
+                        }
+                        return node;
+                      })
+                    );
+                  }}
+                />
+              </div>
+              <div>
+                <Label htmlFor="node-description">节点描述</Label>
+                <Input
+                  id="node-description"
+                  value={selectedNode.data.description || ''}
+                  onChange={(e) => {
+                    setNodes((nds) =>
+                      nds.map((node) => {
+                        if (node.id === selectedNode.id) {
+                          return {
+                            ...node,
+                            data: { ...node.data, description: e.target.value },
+                          };
+                        }
+                        return node;
+                      })
+                    );
+                  }}
+                />
+              </div>
+              {/* 根据节点类型显示不同的配置选项 */}
+              {/* 这里仅显示简单示例，实际实现会更复杂 */}
+              {selectedNode.type === 'task' && (
+                <div>
+                  <Label htmlFor="task-form">表单类型</Label>
+                  <Select
+                    value={selectedNode.data.config?.formType || ''}
+                    onValueChange={(value) => {
+                      setNodes((nds) =>
+                        nds.map((node) => {
+                          if (node.id === selectedNode.id) {
+                            return {
+                              ...node,
+                              data: { 
+                                ...node.data, 
+                                config: { 
+                                  ...node.data.config,
+                                  formType: value,
+                                },
+                              },
+                            };
+                          }
+                          return node;
+                        })
+                      );
+                    }}
+                  >
+                    <SelectTrigger id="task-form">
+                      <SelectValue placeholder="选择表单类型" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="simple">简单表单</SelectItem>
+                      <SelectItem value="advanced">高级表单</SelectItem>
+                      <SelectItem value="dynamic">动态表单</SelectItem>
+                      <SelectItem value="custom">自定义表单</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsNodeDialogOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={() => {
+              // 删除节点
+              setNodes((nds) => nds.filter((n) => n.id !== selectedNode?.id));
+              setIsNodeDialogOpen(false);
+            }}>
+              删除
+            </Button>
+            <Button onClick={() => setIsNodeDialogOpen(false)}>
+              确定
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* 边编辑对话框 */}
+      <Dialog open={isEdgeDialogOpen} onOpenChange={setIsEdgeDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>编辑连线条件</DialogTitle>
+          </DialogHeader>
+          {selectedEdge && (
+            <div className="grid gap-4">
+              <div>
+                <Label htmlFor="edge-condition">条件表达式</Label>
+                <Input
+                  id="edge-condition"
+                  value={selectedEdge.data?.condition?.expression || ''}
+                  onChange={(e) => {
+                    setEdges((eds) =>
+                      eds.map((edge) => {
+                        if (edge.id === selectedEdge.id) {
+                          return {
+                            ...edge,
+                            data: { 
+                              ...edge.data,
+                              condition: {
+                                ...edge.data?.condition,
+                                expression: e.target.value,
+                              },
+                            },
+                          };
+                        }
+                        return edge;
+                      })
+                    );
+                  }}
+                  placeholder="例如: data.amount > 1000"
+                />
+              </div>
+              <div>
+                <Label htmlFor="edge-description">条件描述</Label>
+                <Input
+                  id="edge-description"
+                  value={selectedEdge.data?.condition?.description || ''}
+                  onChange={(e) => {
+                    setEdges((eds) =>
+                      eds.map((edge) => {
+                        if (edge.id === selectedEdge.id) {
+                          return {
+                            ...edge,
+                            data: { 
+                              ...edge.data,
+                              condition: {
+                                ...edge.data?.condition,
+                                description: e.target.value,
+                              },
+                            },
+                          };
+                        }
+                        return edge;
+                      })
+                    );
+                  }}
+                  placeholder="例如: 金额大于1000元"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEdgeDialogOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={() => {
+              // 删除边
+              setEdges((eds) => eds.filter((e) => e.id !== selectedEdge?.id));
+              setIsEdgeDialogOpen(false);
+            }}>
+              删除
+            </Button>
+            <Button onClick={() => setIsEdgeDialogOpen(false)}>
+              确定
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* 变量管理对话框 */}
+      <Dialog open={isVariableDialogOpen} onOpenChange={setIsVariableDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>管理工作流变量</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[400px] overflow-y-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left py-2">名称</th>
+                  <th className="text-left py-2">类型</th>
+                  <th className="text-left py-2">默认值</th>
+                  <th className="text-left py-2">必填</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {variables.map((variable, index) => (
+                  <tr key={variable.id} className="border-b">
+                    <td className="py-2">{variable.name}</td>
+                    <td className="py-2">{variable.type}</td>
+                    <td className="py-2">{String(variable.defaultValue || '')}</td>
+                    <td className="py-2">{variable.required ? '是' : '否'}</td>
+                    <td className="py-2">
+                      <div className="flex gap-1">
+                        <Button 
+                          size="sm" 
+                          variant="ghost"
+                          onClick={() => {
+                            setSelectedVariable(variable);
+                            // 打开编辑变量对话框（需额外实现）
+                          }}
+                        >
+                          编辑
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-500"
+                          onClick={() => {
+                            setVariables(variables.filter(v => v.id !== variable.id));
+                          }}
+                        >
+                          删除
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {variables.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-4 text-center text-gray-500">
+                      暂无变量，请添加
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                // 添加新变量（需额外实现编辑变量对话框）
+                setVariables([...variables, {
+                  id: `var_${Date.now()}`,
+                  name: `variable${variables.length + 1}`,
+                  type: 'string',
+                  required: false,
+                }]);
+              }}
+            >
+              添加变量
+            </Button>
+            <Button onClick={() => setIsVariableDialogOpen(false)}>
+              确定
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// 5. 工作流审批任务组件 (components/workflow/approval-tasks.tsx)
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
+import { format } from 'date-fns';
+import { toast } from 'sonner';
+
+interface ApprovalTasksProps {
+  userId: string;
+  onRefresh?: () => void;
+}
+
+export function ApprovalTasks({ userId, onRefresh }: ApprovalTasksProps) {
+  const [activeTab, setActiveTab] = useState('pending');
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [comment, setComment] = useState('');
+  const [processingTaskId, setProcessingTaskId] = useState<string | null>(null);
+  
+  // 获取任务
+  const fetchTasks = async (status: string) => {
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/workflow/tasks?assignee=${userId}&status=${status}`);
+      if (response.ok) {
+        const data = await response.json();
+        setTasks(data.data || []);
+      } else {
+        toast.error('获取任务失败');
+      }
+    } catch (error) {
+      toast.error('获取任务失败');
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Tab切换时加载相应任务
+  useEffect(() => {
+    const status = activeTab === 'pending' ? 'pending,in_progress' : activeTab;
+    fetchTasks(status);
+  }, [activeTab, userId]);
+  
+  // 认领任务
+  const claimTask = async (taskId: string) => {
+    try {
+      const response = await fetch(`/api/workflow/tasks/${taskId}/claim`, {
+        method: 'POST',
+      });
+      
+      if (response.ok) {
+        toast.success('任务已认领');
+        fetchTasks('pending,in_progress');
+      } else {
+        toast.error('认领任务失败');
+      }
+    } catch (error) {
+      toast.error('认领任务失败');
+      console.error(error);
+    }
+  };
+  
+  // 完成任务
+  const completeTask = async (taskId: string, action: 'complete' | 'reject') => {
+    setProcessingTaskId(taskId);
+    try {
+      const url = `/api/workflow/tasks/${taskId}/${action}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          comment: comment || undefined,
+        }),
+      });
+      
+      if (response.ok) {
+        toast.success(action === 'complete' ? '审批已通过' : '审批已拒绝');
+        setComment('');
+        fetchTasks('pending,in_progress');
+        onRefresh?.();
+      } else {
+        const data = await response.json();
+        toast.error(data.error?.message || '操作失败');
+      }
+    } catch (error) {
+      toast.error('操作失败');
+      console.error(error);
+    } finally {
+      setProcessingTaskId(null);
+    }
+  };
+  
+  // 获取任务状态徽章
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return <Badge variant="secondary">待处理</Badge>;
+      case 'in_progress':
+        return <Badge variant="outline">处理中</Badge>;
+      case 'completed':
+        return <Badge variant="success">已完成</Badge>;
+      case 'rejected':
+        return <Badge variant="destructive">已拒绝</Badge>;
+      case 'canceled':
+        return <Badge>已取消</Badge>;
+      default:
+        return <Badge>{status}</Badge>;
+    }
+  };
+  
+  // 获取任务优先级徽章
+  const getPriorityBadge = (priority: string) => {
+    switch (priority) {
+      case 'low':
+        return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">低</Badge>;
+      case 'medium':
+        return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">中</Badge>;
+      case 'high':
+        return <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">高</Badge>;
+      case 'urgent':
+        return <Badge variant="destructive">紧急</Badge>;
+      default:
+        return <Badge variant="outline">{priority}</Badge>;
+    }
+  };
+  
+  // 渲染任务列表
+  const renderTasks = () => {
+    if (loading) {
+      return (
+        <div className="flex justify-center items-center h-40">
+          <p>正在加载...</p>
+        </div>
+      );
+    }
+    
+    if (tasks.length === 0) {
+      return (
+        <div className="flex justify-center items-center h-40">
+          <p className="text-gray-500">暂无{activeTab === 'pending' ? '待处理' : activeTab === 'completed' ? '已完成' : '已拒绝'}的审批任务</p>
+        </div>
+      );
+    }
+    
+    return (
+      <ScrollArea className="h-[500px] pr-4">
+        <div className="space-y-4">
+          {tasks.map(task => (
+            <Card key={task.id}>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle>{task.nodeName}</CardTitle>
+                  <div className="flex items-center gap-2">
+                    {getStatusBadge(task.status)}
+                    {getPriorityBadge(task.priority)}
+                  </div>
+                </div>
+                <CardDescription>
+                  工作流：{task.workflowName} - 实例ID：{task.instanceId.substring(0, 8)}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="text-gray-500">创建时间：</span>
+                      {format(new Date(task.createdAt), 'yyyy-MM-dd HH:mm')}
+                    </div>
+                    {task.dueDate && (
+                      <div>
+                        <span className="text-gray-500">截止时间：</span>
+                        {format(new Date(task.dueDate), 'yyyy-MM-dd HH:mm')}
+                      </div>
+                    )}
+                  </div>
+                  {task.formData && (
+                    <>
+                      <Separator />
+                      <div>
+                        <p className="text-sm font-medium mb-1">审批内容</p>
+                        <div className="bg-gray-50 p-3 rounded text-sm">
+                          {Object.entries(task.formData).map(([key, value]) => (
+                            <div key={key}>
+                              <span className="font-medium">{key}:</span> {String(value)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                  
+                  {activeTab === 'pending' && (
+                    <>
+                      <Separator />
+                      <div>
+                        <p className="text-sm font-medium mb-1">审批意见</p>
+                        <Textarea
+                          placeholder="请输入审批意见..."
+                          className="min-h-[80px]"
+                          value={comment}
+                          onChange={(e) => setComment(e.target.value)}
+                        />
+                      </div>
+                    </>
+                  )}
+                  
+                  {task.comments && task.comments.length > 0 && (
+                    <>
+                      <Separator />
+                      <div>
+                        <p className="text-sm font-medium mb-1">历史意见</p>
+                        <div className="space-y-2">
+                          {task.comments.map((comment: any) => (
+                            <div key={comment.id} className="bg-gray-50 p-2 rounded text-sm">
+                              <p className="text-gray-500">
+                                {comment.userName || comment.userId} - 
+                                {format(new Date(comment.timestamp), 'yyyy-MM-dd HH:mm')}
+                              </p>
+                              <p>{comment.content}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </CardContent>
+              {activeTab === 'pending' && (
+                <CardFooter className="flex justify-end gap-2">
+                  {task.status === 'pending' && (
+                    <Button
+                      variant="outline"
+                      onClick={() => claimTask(task.id)}
+                    >
+                      认领任务
+                    </Button>
+                  )}
+                  {(task.status === 'in_progress' || (task.assigneeType === 'user' && task.assignees.includes(userId))) && (
+                    <>
+                      <Button
+                        variant="destructive"
+                        onClick={() => completeTask(task.id, 'reject')}
+                        disabled={!!processingTaskId}
+                      >
+                        {processingTaskId === task.id ? '处理中...' : '拒绝'}
+                      </Button>
+                      <Button
+                        onClick={() => completeTask(task.id, 'complete')}
+                        disabled={!!processingTaskId}
+                      >
+                        {processingTaskId === task.id ? '处理中...' : '通过'}
+                      </Button>
+                    </>
+                  )}
+                </CardFooter>
+              )}
+            </Card>
+          ))}
+        </div>
+      </ScrollArea>
+    );
+  };
+  
+  return (
+    <div>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <div className="flex justify-between items-center mb-4">
+          <TabsList>
+            <TabsTrigger value="pending">待处理</TabsTrigger>
+            <TabsTrigger value="completed">已通过</TabsTrigger>
+            <TabsTrigger value="rejected">已拒绝</TabsTrigger>
+          </TabsList>
+          <Button variant="outline" size="sm" onClick={() => fetchTasks(activeTab === 'pending' ? 'pending,in_progress' : activeTab)}>
+            刷新
+          </Button>
+        </div>
+        
+        <TabsContent value="pending">
+          {renderTasks()}
+        </TabsContent>
+        
+        <TabsContent value="completed">
+          {renderTasks()}
+        </TabsContent>
+        
+        <TabsContent value="rejected">
+          {renderTasks()}
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+——————————————————————————————————————————
+预期影响：
+- 业务流程灵活性显著提升，支持复杂业务场景
+- 审批效率提高约 50%，减少人工协调
+- 业务规则可视化，降低维护成本
+- 流程透明度提升，可追溯性增强
+- 业务扩展性增强，新流程开发周期缩短

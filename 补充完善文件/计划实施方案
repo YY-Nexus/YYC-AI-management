@@ -1,0 +1,1064 @@
+# YanYu Cloud³ 智能商务管理系统 - 正式实施方案
+### server/src/config/database.ts
+```javascript
+import { Pool, type PoolConfig, type QueryResult } from "pg"
+import { logger } from "./logger"
+
+const poolConfig: PoolConfig = {
+  host: process.env.DB_HOST || "localhost",
+  port: Number.parseInt(process.env.DB_PORT || "5432", 10),
+  database: process.env.DB_NAME || "yanyu_cloud",
+  user: process.env.DB_USER || "postgres",
+  password: process.env.DB_PASSWORD || "postgres",
+  max: Number.parseInt(process.env.DB_POOL_MAX || "20", 10),
+  min: Number.parseInt(process.env.DB_POOL_MIN || "5", 10),
+  idleTimeoutMillis: Number.parseInt(process.env.DB_IDLE_TIMEOUT || "30000", 10),
+  connectionTimeoutMillis: Number.parseInt(process.env.DB_CONNECT_TIMEOUT || "10000", 10),
+  statement_timeout: 30000,
+  query_timeout: 30000,
+  ssl:
+    process.env.DB_SSL === "true"
+      ? {
+          rejectUnauthorized: false,
+        }
+      : false,
+  application_name: "yanyu-cloud",
+}
+
+export const pool = new Pool(poolConfig)
+
+// 连接池事件监听
+pool.on("connect", (client) => {
+  logger.debug("New database client connected", {
+    totalCount: pool.totalCount,
+    idleCount: pool.idleCount,
+    waitingCount: pool.waitingCount,
+  })
+})
+
+pool.on("acquire", (client) => {
+  logger.debug("Database client acquired", {
+    totalCount: pool.totalCount,
+    idleCount: pool.idleCount,
+  })
+})
+
+pool.on("remove", (client) => {
+  logger.debug("Database client removed", {
+    totalCount: pool.totalCount,
+    idleCount: pool.idleCount,
+  })
+})
+
+pool.on("error", (err, client) => {
+  logger.error("Unexpected database client error", {
+    error: err,
+    message: err.message,
+  })
+})
+
+// 查询包装器 - 添加日志和指标
+export async function query<T = any>(text: string, params?: any[]): Promise<QueryResult<T>> {
+  const start = Date.now()
+
+  try {
+    const result = await pool.query<T>(text, params)
+    const duration = Date.now() - start
+
+    logger.debug("Database query executed", {
+      duration: `${duration}ms`,
+      rowCount: result.rowCount,
+      command: result.command,
+    })
+
+    // 记录慢查询
+    if (duration > 1000) {
+      logger.warn("Slow query detected", {
+        duration: `${duration}ms`,
+        query: text.substring(0, 100),
+      })
+    }
+
+    return result
+  } catch (error) {
+    const duration = Date.now() - start
+    logger.error("Database query failed", {
+      error,
+      duration: `${duration}ms`,
+      query: text.substring(0, 100),
+    })
+    throw error
+  }
+}
+
+// 事务包装器
+export async function transaction<T>(callback: (client: any) => Promise<T>): Promise<T> {
+  const client = await pool.connect()
+
+  try {
+    await client.query("BEGIN")
+    const result = await callback(client)
+    await client.query("COMMIT")
+    return result
+  } catch (error) {
+    await client.query("ROLLBACK")
+    logger.error("Transaction rolled back", { error })
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
+// 测试数据库连接
+export async function testConnection(): Promise<boolean> {
+  try {
+    const result = await pool.query("SELECT NOW() as now, version() as version")
+    logger.info("Database connection test successful", {
+      timestamp: result.rows[0].now,
+      version: result.rows[0].version.split(" ")[0],
+    })
+    return true
+  } catch (error) {
+    logger.error("Database connection test failed", { error })
+    return false
+  }
+}
+
+// 获取连接池统计
+export function getPoolStats() {
+  return {
+    total: pool.totalCount,
+    idle: pool.idleCount,
+    waiting: pool.waitingCount,
+  }
+}
+```
+### server/src/middleware/logger.ts
+```javascript
+import winston from "winston"
+import path from "path"
+
+const logLevel = process.env.LOG_LEVEL || "info"
+const isDevelopment = process.env.NODE_ENV !== "production"
+
+// 自定义日志格式
+const customFormat = winston.format.combine(
+  winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
+  winston.format.errors({ stack: true }),
+  winston.format.splat(),
+  winston.format.json(),
+)
+
+// 开发环境的彩色输出格式
+const devFormat = winston.format.combine(
+  winston.format.colorize(),
+  winston.format.timestamp({ format: "HH:mm:ss" }),
+  winston.format.printf(({ timestamp, level, message, ...meta }) => {
+    let metaStr = ""
+    if (Object.keys(meta).length > 0) {
+      metaStr = "\n" + JSON.stringify(meta, null, 2)
+    }
+    return `${timestamp} [${level}]: ${message}${metaStr}`
+  }),
+)
+
+// 日志传输配置
+const transports: winston.transport[] = [
+  // 控制台输出
+  new winston.transports.Console({
+    format: isDevelopment ? devFormat : customFormat,
+  }),
+]
+
+// 生产环境添加文件日志
+if (!isDevelopment) {
+  const logsDir = process.env.LOGS_DIR || "./logs"
+
+  // 错误日志
+  transports.push(
+    new winston.transports.File({
+      filename: path.join(logsDir, "error.log"),
+      level: "error",
+      maxsize: 10 * 1024 * 1024, // 10MB
+      maxFiles: 10,
+      format: customFormat,
+    }),
+  )
+
+  // 综合日志
+  transports.push(
+    new winston.transports.File({
+      filename: path.join(logsDir, "combined.log"),
+      maxsize: 10 * 1024 * 1024, // 10MB
+      maxFiles: 10,
+      format: customFormat,
+    }),
+  )
+}
+
+// 创建 logger 实例
+export const logger = winston.createLogger({
+  level: logLevel,
+  format: customFormat,
+  transports,
+  exitOnError: false,
+  silent: process.env.NODE_ENV === "test",
+})
+
+// 添加便捷方法
+export default logger
+```
+
+```javascript
+import Redis, { type RedisOptions } from "ioredis"
+import { logger } from "./logger"
+
+const redisConfig: RedisOptions = {
+  host: process.env.REDIS_HOST || "localhost",
+  port: Number.parseInt(process.env.REDIS_PORT || "6379", 10),
+  password: process.env.REDIS_PASSWORD || undefined,
+  db: Number.parseInt(process.env.REDIS_DB || "0", 10),
+  keyPrefix: process.env.REDIS_KEY_PREFIX || "yanyu:",
+  retryStrategy: (times: number) => {
+    const delay = Math.min(times * 50, 2000)
+    logger.warn("Redis retry attempt", { attempt: times, delay })
+    return delay
+  },
+  maxRetriesPerRequest: 3,
+  enableReadyCheck: true,
+  enableOfflineQueue: true,
+  connectTimeout: 10000,
+  lazyConnect: false,
+  showFriendlyErrorStack: process.env.NODE_ENV !== "production",
+}
+
+export const redis = new Redis(redisConfig)
+
+// Redis 事件监听
+redis.on("connect", () => {
+  logger.info("Redis client connecting")
+})
+
+redis.on("ready", () => {
+  logger.info("Redis client ready", {
+    host: redisConfig.host,
+    port: redisConfig.port,
+    db: redisConfig.db,
+  })
+})
+
+redis.on("error", (error) => {
+  logger.error("Redis client error", {
+    error,
+    message: error.message,
+  })
+})
+
+redis.on("close", () => {
+  logger.warn("Redis client connection closed")
+})
+
+redis.on("reconnecting", (delay: number) => {
+  logger.info("Redis client reconnecting", { delay })
+})
+
+redis.on("end", () => {
+  logger.warn("Redis client connection ended")
+})
+
+// 缓存工具函数
+export async function cacheGet<T>(key: string): Promise<T | null> {
+  try {
+    const data = await redis.get(key)
+    if (!data) return null
+
+    try {
+      return JSON.parse(data) as T
+    } catch {
+      return data as T
+    }
+  } catch (error) {
+    logger.error("Cache get error", { error, key })
+    return null
+  }
+}
+
+export async function cacheSet(key: string, value: any, ttl = 3600): Promise<boolean> {
+  try {
+    const serialized = typeof value === "string" ? value : JSON.stringify(value)
+    await redis.setex(key, ttl, serialized)
+    return true
+  } catch (error) {
+    logger.error("Cache set error", { error, key })
+    return false
+  }
+}
+
+export async function cacheDel(key: string | string[]): Promise<boolean> {
+  try {
+    if (Array.isArray(key)) {
+      await redis.del(...key)
+    } else {
+      await redis.del(key)
+    }
+    return true
+  } catch (error) {
+    logger.error("Cache delete error", { error, key })
+    return false
+  }
+}
+
+export async function cacheExists(key: string): Promise<boolean> {
+  try {
+    const result = await redis.exists(key)
+    return result === 1
+  } catch (error) {
+    logger.error("Cache exists check error", { error, key })
+    return false
+  }
+}
+
+export async function cacheIncr(key: string): Promise<number> {
+  try {
+    return await redis.incr(key)
+  } catch (error) {
+    logger.error("Cache increment error", { error, key })
+    throw error
+  }
+}
+
+export async function cacheExpire(key: string, ttl: number): Promise<boolean> {
+  try {
+    const result = await redis.expire(key, ttl)
+    return result === 1
+  } catch (error) {
+    logger.error("Cache expire error", { error, key })
+    return false
+  }
+}
+
+export async function cacheKeys(pattern: string): Promise<string[]> {
+  try {
+    return await redis.keys(pattern)
+  } catch (error) {
+    logger.error("Cache keys error", { error, pattern })
+    return []
+  }
+}
+
+export async function cacheFlush(): Promise<boolean> {
+  try {
+    await redis.flushdb()
+    return true
+  } catch (error) {
+    logger.error("Cache flush error", { error })
+    return false
+  }
+}
+
+// 分布式锁
+export async function acquireLock(key: string, ttl = 10000): Promise<boolean> {
+  try {
+    const result = await redis.set(key, "1", "PX", ttl, "NX")
+    return result === "OK"
+  } catch (error) {
+    logger.error("Lock acquisition error", { error, key })
+    return false
+  }
+}
+
+export async function releaseLock(key: string): Promise<boolean> {
+  try {
+    await redis.del(key)
+    return true
+  } catch (error) {
+    logger.error("Lock release error", { error, key })
+    return false
+  }
+}
+```
+### server/src/middleware/error-handler.ts
+```javascript
+import type { Request, Response, NextFunction } from "express"
+import { logger } from "../config/logger"
+
+export class AppError extends Error {
+  statusCode: number
+  code: string
+  isOperational: boolean
+  details?: any
+
+  constructor(message: string, statusCode = 500, code = "INTERNAL_ERROR", details?: any) {
+    super(message)
+    this.statusCode = statusCode
+    this.code = code
+    this.isOperational = true
+    this.details = details
+    Error.captureStackTrace(this, this.constructor)
+  }
+
+  static badRequest(message: string, code = "BAD_REQUEST", details?: any) {
+    return new AppError(message, 400, code, details)
+  }
+
+  static unauthorized(message = "Unauthorized", code = "UNAUTHORIZED") {
+    return new AppError(message, 401, code)
+  }
+
+  static forbidden(message = "Forbidden", code = "FORBIDDEN") {
+    return new AppError(message, 403, code)
+  }
+
+  static notFound(message = "Resource not found", code = "NOT_FOUND") {
+    return new AppError(message, 404, code)
+  }
+
+  static conflict(message: string, code = "CONFLICT", details?: any) {
+    return new AppError(message, 409, code, details)
+  }
+
+  static unprocessable(message: string, code = "UNPROCESSABLE_ENTITY", details?: any) {
+    return new AppError(message, 422, code, details)
+  }
+
+  static internal(message = "Internal server error", code = "INTERNAL_ERROR") {
+    return new AppError(message, 500, code)
+  }
+
+  static serviceUnavailable(message = "Service unavailable", code = "SERVICE_UNAVAILABLE") {
+    return new AppError(message, 503, code)
+  }
+}
+
+export const errorHandler = (err: Error | AppError, req: Request, res: Response, next: NextFunction) => {
+  if (err instanceof AppError) {
+    // 操作错误 - 已知错误
+    logger.warn("Operational error", {
+      code: err.code,
+      message: err.message,
+      statusCode: err.statusCode,
+      path: req.path,
+      method: req.method,
+      ip: req.ip,
+      userAgent: req.get("user-agent"),
+      details: err.details,
+    })
+
+    return res.status(err.statusCode).json({
+      success: false,
+      error: err.code,
+      message: err.message,
+      ...(err.details && { details: err.details }),
+      timestamp: new Date().toISOString(),
+    })
+  }
+
+  // 编程错误 - 未知错误
+  logger.error("Programming error", {
+    error: err,
+    message: err.message,
+    stack: err.stack,
+    path: req.path,
+    method: req.method,
+    ip: req.ip,
+    userAgent: req.get("user-agent"),
+  })
+
+  // 生产环境不暴露错误详情
+  if (process.env.NODE_ENV === "production") {
+    return res.status(500).json({
+      success: false,
+      error: "INTERNAL_ERROR",
+      message: "An unexpected error occurred. Please try again later.",
+      timestamp: new Date().toISOString(),
+    })
+  }
+
+  // 开发环境返回详细错误
+  return res.status(500).json({
+    success: false,
+    error: "INTERNAL_ERROR",
+    message: err.message,
+    stack: err.stack,
+    timestamp: new Date().toISOString(),
+  })
+}
+
+// 异步错误处理包装器
+export const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    Promise.resolve(fn(req, res, next)).catch(next)
+  }
+}
+```
+### request-logger.ts
+```javascript
+import type { Request, Response, NextFunction } from "express"
+import { logger } from "../config/logger"
+
+export const requestLogger = (req: Request, res: Response, next: NextFunction) => {
+  const startTime = Date.now()
+
+  // 记录请求
+  const requestData = {
+    method: req.method,
+    path: req.path,
+    query: req.query,
+    ip: req.ip,
+    userAgent: req.get("user-agent"),
+    contentType: req.get("content-type"),
+  }
+
+  logger.http("Incoming request", requestData)
+
+  // 监听响应完成
+  res.on("finish", () => {
+    const duration = Date.now() - startTime
+
+    const logData = {
+      ...requestData,
+      statusCode: res.statusCode,
+      duration: `${duration}ms`,
+      contentLength: res.get("content-length"),
+    }
+
+    if (res.statusCode >= 500) {
+      logger.error("Request failed with server error", logData)
+    } else if (res.statusCode >= 400) {
+      logger.warn("Request failed with client error", logData)
+    } else {
+      logger.http("Request completed", logData)
+    }
+  })
+
+  next()
+}
+```
+### server/src/routes/index.ts
+```javascript
+import { Router } from "express"
+import authRoutes from "./auth.routes"
+import ticketRoutes from "./ticket.routes"
+import aiRoutes from "./ai.routes"
+
+const router = Router()
+
+// API 版本信息
+router.get("/", (req, res) => {
+  res.json({
+    name: "YanYu Cloud³ API",
+    version: "3.0.0",
+    status: "operational",
+    timestamp: new Date().toISOString(),
+  })
+})
+
+// 路由注册
+router.use("/auth", authRoutes)
+router.use("/tickets", ticketRoutes)
+router.use("/ai", aiRoutes)
+
+export default router
+```
+### server/src/index.ts
+```javascript
+import express, { type Application, type Request, type Response } from "express"
+import helmet from "helmet"
+import cors from "cors"
+import compression from "compression"
+import rateLimit from "express-rate-limit"
+import { pool } from "./config/database"
+import { redis } from "./config/redis"
+import { logger } from "./config/logger"
+import { errorHandler } from "./middleware/error-handler"
+import { requestLogger } from "./middleware/request-logger"
+import { metricsMiddleware } from "./middleware/metrics.middleware"
+import { MetricsService } from "./services/metrics.service"
+import apiRouter from "./routes"
+import metricsRouter from "./routes/metrics.routes"
+
+const app: Application = express()
+const PORT = process.env.PORT || 3001
+
+// 初始化指标服务
+MetricsService.initialize()
+
+// 安全中间件
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        mediaSrc: ["'self'"],
+        frameSrc: ["'none'"],
+      },
+    },
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    },
+    noSniff: true,
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+  }),
+)
+
+// CORS 配置
+const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",") || ["http://localhost:3000", "http://localhost:5173"]
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true)
+      } else {
+        callback(new Error("Not allowed by CORS"))
+      }
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    exposedHeaders: ["X-Total-Count", "X-Page-Count"],
+    maxAge: 86400,
+  }),
+)
+
+// 响应压缩
+app.use(
+  compression({
+    level: 6,
+    threshold: 1024,
+    filter: (req, res) => {
+      if (req.headers["x-no-compression"]) {
+        return false
+      }
+      return compression.filter(req, res)
+    },
+  }),
+)
+
+// 请求体解析
+app.use(express.json({ limit: "10mb" }))
+app.use(express.urlencoded({ extended: true, limit: "10mb" }))
+
+// 请求日志和指标收集
+app.use(requestLogger)
+app.use(metricsMiddleware)
+
+// 速率限制 - API 路由
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: {
+    success: false,
+    error: "TOO_MANY_REQUESTS",
+    message: "Too many requests from this IP, please try again later.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    logger.warn("Rate limit exceeded", {
+      ip: req.ip,
+      path: req.path,
+      userAgent: req.get("user-agent"),
+    })
+    res.status(429).json({
+      success: false,
+      error: "TOO_MANY_REQUESTS",
+      message: "Too many requests, please try again later.",
+    })
+  },
+  skip: (req) => {
+    // 跳过健康检查和指标端点
+    return req.path === "/health" || req.path === "/metrics"
+  },
+})
+
+// 认证端点的严格速率限制
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  skipSuccessfulRequests: true,
+  message: {
+    success: false,
+    error: "TOO_MANY_AUTH_ATTEMPTS",
+    message: "Too many authentication attempts, please try again later.",
+  },
+})
+
+app.use("/api/", apiLimiter)
+app.use("/api/auth/login", authLimiter)
+app.use("/api/auth/register", authLimiter)
+
+// 健康检查端点
+app.get("/health", async (req: Request, res: Response) => {
+  try {
+    const dbCheck = await pool.query("SELECT 1 as health")
+    const redisCheck = await redis.ping()
+
+    const dbHealthy = dbCheck.rows.length > 0 && dbCheck.rows[0].health === 1
+    const redisHealthy = redisCheck === "PONG"
+
+    const healthy = dbHealthy && redisHealthy
+
+    res.status(healthy ? 200 : 503).json({
+      status: healthy ? "healthy" : "unhealthy",
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      services: {
+        database: dbHealthy ? "connected" : "disconnected",
+        redis: redisHealthy ? "connected" : "disconnected",
+      },
+      memory: {
+        used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+        total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+      },
+    })
+  } catch (error) {
+    logger.error("Health check failed", { error })
+    res.status(503).json({
+      status: "unhealthy",
+      timestamp: new Date().toISOString(),
+      error: "Service unavailable",
+    })
+  }
+})
+
+// 指标端点
+app.use("/metrics", metricsRouter)
+
+// API 路由
+app.use("/api", apiRouter)
+
+// 404 处理
+app.use((req: Request, res: Response) => {
+  res.status(404).json({
+    success: false,
+    error: "NOT_FOUND",
+    message: `Cannot ${req.method} ${req.path}`,
+    path: req.path,
+    timestamp: new Date().toISOString(),
+  })
+})
+
+// 全局错误处理
+app.use(errorHandler)
+
+// 启动服务器
+const startServer = async () => {
+  try {
+    logger.info("Starting YanYu Cloud³ Server...")
+
+    // 测试数据库连接
+    const dbResult = await pool.query("SELECT NOW() as current_time, version() as version")
+    logger.info("Database connected", {
+      timestamp: dbResult.rows[0].current_time,
+      version: dbResult.rows[0].version.split(" ")[0],
+    })
+
+    // 测试 Redis 连接
+    const redisPing = await redis.ping()
+    logger.info("Redis connected", { response: redisPing })
+
+    // 获取数据库连接池状态
+    const poolStats = {
+      total: pool.totalCount,
+      idle: pool.idleCount,
+      waiting: pool.waitingCount,
+    }
+    logger.info("Database pool initialized", poolStats)
+    MetricsService.updateDbConnectionPool(poolStats.total, poolStats.idle, poolStats.total - poolStats.idle)
+
+    // 启动 HTTP 服务器
+    const server = app.listen(PORT, () => {
+      logger.info("Server started successfully", {
+        port: PORT,
+        environment: process.env.NODE_ENV || "development",
+        nodeVersion: process.version,
+        pid: process.pid,
+      })
+    })
+
+    // 优雅关闭处理
+    const gracefulShutdown = async (signal: string) => {
+      logger.info(`${signal} received, starting graceful shutdown...`)
+
+      // 停止接受新连接
+      server.close(async () => {
+        logger.info("HTTP server closed")
+
+        try {
+          // 关闭数据库连接池
+          await pool.end()
+          logger.info("Database pool closed")
+
+          // 关闭 Redis 连接
+          await redis.quit()
+          logger.info("Redis connection closed")
+
+          logger.info("Graceful shutdown completed")
+          process.exit(0)
+        } catch (error) {
+          logger.error("Error during graceful shutdown", { error })
+          process.exit(1)
+        }
+      })
+
+      // 如果30秒内未完成关闭，强制退出
+      setTimeout(() => {
+        logger.error("Forced shutdown after timeout")
+        process.exit(1)
+      }, 30000)
+    }
+
+    process.on("SIGTERM", () => gracefulShutdown("SIGTERM"))
+    process.on("SIGINT", () => gracefulShutdown("SIGINT"))
+
+    // 未捕获异常处理
+    process.on("uncaughtException", (error) => {
+      logger.error("Uncaught Exception", { error, stack: error.stack })
+      gracefulShutdown("UNCAUGHT_EXCEPTION")
+    })
+
+    process.on("unhandledRejection", (reason, promise) => {
+      logger.error("Unhandled Rejection", { reason, promise })
+      gracefulShutdown("UNHANDLED_REJECTION")
+    })
+  } catch (error) {
+    logger.error("Failed to start server", { error })
+    process.exit(1)
+  }
+}
+
+startServer()
+
+export default app
+```
+### .env.example
+```javascript
+# 应用配置
+NODE_ENV=development
+PORT=3001
+LOG_LEVEL=debug
+LOGS_DIR=./logs
+
+# 跨域配置
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+
+# 数据库配置
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=yanyu_cloud
+DB_USER=postgres
+DB_PASSWORD=your_secure_password
+DB_POOL_MAX=20
+DB_POOL_MIN=5
+DB_IDLE_TIMEOUT=30000
+DB_CONNECT_TIMEOUT=10000
+DB_SSL=false
+
+# Redis 配置
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DB=0
+REDIS_KEY_PREFIX=yanyu:
+
+# JWT 配置
+JWT_SECRET=your_jwt_secret_key_change_in_production
+JWT_REFRESH_SECRET=your_refresh_secret_key_change_in_production
+JWT_ACCESS_EXPIRY=15m
+JWT_REFRESH_EXPIRY=7d
+
+# OpenAI 配置
+OPENAI_API_KEY=your_openai_api_key
+OPENAI_MODEL=gpt-4o
+OPENAI_ORGANIZATION=your_org_id
+
+# Prometheus 配置
+ENABLE_PROMETHEUS_METRICS=true
+```
+package.json
+```javascript
+{
+  "name": "yanyu-cloud-server",
+  "version": "3.0.0",
+  "description": "YanYu Cloud³ 智能商务管理系统后端服务",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "test": "jest --coverage",
+    "test:watch": "jest --watch",
+    "test:ci": "jest --ci --coverage --maxWorkers=2",
+    "migrate": "node scripts/migrate.js",
+    "seed": "node scripts/seed.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "helmet": "^7.1.0",
+    "cors": "^2.8.5",
+    "compression": "^1.7.4",
+    "express-rate-limit": "^7.1.5",
+    "pg": "^8.11.3",
+    "ioredis": "^5.3.2",
+    "winston": "^3.11.0",
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "express-validator": "^7.0.1",
+    "openai": "^4.24.1",
+    "prom-client": "^15.1.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.6",
+    "@types/cors": "^2.8.17",
+    "@types/compression": "^1.7.5",
+    "@types/bcrypt": "^5.0.2",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/jest": "^29.5.11",
+    "@typescript-eslint/eslint-plugin": "^6.16.0",
+    "@typescript-eslint/parser": "^6.16.0",
+    "eslint": "^8.56.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.3.3",
+    "supertest": "^6.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
+```
+### tsconfig.json
+```javascript
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": ["ES2022"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "removeComments": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "moduleResolution": "node",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+}
+```
+### package.json
+```javascript
+{
+  "name": "my-v0-project",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^3.10.0",
+    "@radix-ui/react-accordion": "1.2.2",
+    "@radix-ui/react-alert-dialog": "1.1.4",
+    "@radix-ui/react-aspect-ratio": "1.1.1",
+    "@radix-ui/react-avatar": "1.1.2",
+    "@radix-ui/react-checkbox": "1.1.3",
+    "@radix-ui/react-collapsible": "1.1.2",
+    "@radix-ui/react-context-menu": "2.2.4",
+    "@radix-ui/react-dialog": "1.1.4",
+    "@radix-ui/react-dropdown-menu": "2.1.4",
+    "@radix-ui/react-hover-card": "1.1.4",
+    "@radix-ui/react-label": "2.1.1",
+    "@radix-ui/react-menubar": "1.1.4",
+    "@radix-ui/react-navigation-menu": "1.2.3",
+    "@radix-ui/react-popover": "1.1.4",
+    "@radix-ui/react-progress": "1.1.1",
+    "@radix-ui/react-radio-group": "1.2.2",
+    "@radix-ui/react-scroll-area": "1.2.2",
+    "@radix-ui/react-select": "2.1.4",
+    "@radix-ui/react-separator": "1.1.1",
+    "@radix-ui/react-slider": "1.2.2",
+    "@radix-ui/react-slot": "1.1.1",
+    "@radix-ui/react-switch": "1.1.2",
+    "@radix-ui/react-tabs": "1.1.2",
+    "@radix-ui/react-toast": "1.2.4",
+    "@radix-ui/react-toggle": "1.1.1",
+    "@radix-ui/react-toggle-group": "1.1.1",
+    "@radix-ui/react-tooltip": "1.1.6",
+    "@vercel/analytics": "1.3.1",
+    "autoprefixer": "^10.4.20",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "1.0.4",
+    "date-fns": "4.1.0",
+    "embla-carousel-react": "8.5.1",
+    "geist": "^1.3.1",
+    "input-otp": "1.4.1",
+    "lucide-react": "^0.454.0",
+    "next": "15.5.4",
+    "next-themes": "^0.4.6",
+    "react": "19.1.0",
+    "react-day-picker": "9.8.0",
+    "react-dom": "19.1.0",
+    "react-hook-form": "^7.60.0",
+    "react-resizable-panels": "^2.1.7",
+    "recharts": "2.15.4",
+    "sonner": "^1.7.4",
+    "tailwind-merge": "^3.3.1",
+    "tailwindcss-animate": "^1.0.7",
+    "vaul": "^0.9.9",
+    "zod": "3.25.67",
+    "express": "5.1.0",
+    "helmet": "8.1.0",
+    "cors": "2.8.5",
+    "compression": "1.8.1",
+    "express-rate-limit": "8.1.0",
+    "pg": "8.16.3",
+    "ioredis": "5.8.1",
+    "winston": "3.18.3",
+    "path": "0.12.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.9",
+    "@types/node": "^22",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "postcss": "^8.5",
+    "tailwindcss": "^4.1.9",
+    "tw-animate-css": "1.3.3",
+    "typescript": "^5"
+  }
+}
+```
+### ❤️ 感谢您的支持,希望这个项目能够帮到你!

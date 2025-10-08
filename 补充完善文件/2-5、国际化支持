@@ -1,0 +1,364 @@
+### 国际化支持
+当前问题：
+系统仅支持中文界面，缺少多语言支持，无法满足国际化需求。
+改进建议：
+1. 实现完整的国际化框架
+2. 支持多语言切换和本地化
+3. 提供语言资源管理工具
+4. 支持RTL布局和区域格式
+5. 实现动态语言包加载
+技术实现方案：
+——————————————————————————————————————————————
+// 1. i18n 配置 (src/config/i18n.config.ts)
+import i18next from 'i18next';
+import { initReactI18next } from 'react-i18next';
+import Backend from 'i18next-http-backend';
+import LanguageDetector from 'i18next-browser-languagedetector';
+
+// 支持的语言列表
+export const SUPPORTED_LANGUAGES = [
+  { code: 'zh-CN', name: '简体中文', nativeName: '简体中文', direction: 'ltr' },
+  { code: 'zh-TW', name: '繁體中文', nativeName: '繁體中文', direction: 'ltr' },
+  { code: 'en-US', name: 'English (US)', nativeName: 'English', direction: 'ltr' },
+  { code: 'ja-JP', name: '日本語', nativeName: '日本語', direction: 'ltr' },
+  { code: 'ko-KR', name: '한국어', nativeName: '한국어', direction: 'ltr' },
+  { code: 'ar-SA', name: 'العربية', nativeName: 'العربية', direction: 'rtl' },
+  { code: 'es-ES', name: 'Español', nativeName: 'Español', direction: 'ltr' },
+  { code: 'fr-FR', name: 'Français', nativeName: 'Français', direction: 'ltr' },
+  { code: 'de-DE', name: 'Deutsch', nativeName: 'Deutsch', direction: 'ltr' },
+] as const;
+
+export type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number]['code'];
+
+// 初始化 i18next
+i18next
+  .use(Backend)
+  .use(LanguageDetector)
+  .use(initReactI18next)
+  .init({
+    fallbackLng: 'zh-CN',
+    supportedLngs: SUPPORTED_LANGUAGES.map(lang => lang.code),
+    debug: process.env.NODE_ENV === 'development',
+    
+    interpolation: {
+      escapeValue: false, // React 已经处理了 XSS
+    },
+    
+    backend: {
+      loadPath: '/locales/{{lng}}/{{ns}}.json',
+      addPath: '/locales/add/{{lng}}/{{ns}}',
+    },
+    
+    detection: {
+      order: ['querystring', 'cookie', 'localStorage', 'navigator', 'htmlTag'],
+      caches: ['localStorage', 'cookie'],
+      lookupQuerystring: 'lng',
+      lookupCookie: 'i18next',
+      lookupLocalStorage: 'i18nextLng',
+    },
+    
+    react: {
+      useSuspense: true,
+    },
+  });
+
+export default i18next;
+
+// 2. 语言切换 Hook (hooks/use-language.tsx)
+import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
+import { SUPPORTED_LANGUAGES, SupportedLanguage } from '../config/i18n.config';
+
+export function useLanguage() {
+  const { i18n, t } = useTranslation();
+  const [currentLanguage, setCurrentLanguage] = useState<SupportedLanguage>(
+    i18n.language as SupportedLanguage
+  );
+  
+  // 获取当前语言信息
+  const languageInfo = SUPPORTED_LANGUAGES.find(lang => lang.code === currentLanguage);
+  
+  // 切换语言
+  const changeLanguage = useCallback(
+    async (language: SupportedLanguage) => {
+      try {
+        await i18n.changeLanguage(language);
+        setCurrentLanguage(language);
+        
+        // 更新 HTML 属性
+        const langInfo = SUPPORTED_LANGUAGES.find(lang => lang.code === language);
+        if (langInfo) {
+          document.documentElement.lang = language;
+          document.documentElement.dir = langInfo.direction;
+        }
+        
+        // 保存到用户偏好（如果已登录）
+        const user = localStorage.getItem('user');
+        if (user) {
+          try {
+            await fetch('/api/user/preferences', {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`,
+              },
+              body: JSON.stringify({ language }),
+            });
+          } catch (error) {
+            console.error('Failed to save language preference', error);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to change language', error);
+      }
+    },
+    [i18n]
+  );
+  
+  // 监听语言变化
+  useEffect(() => {
+    const handleLanguageChange = (lng: string) => {
+      setCurrentLanguage(lng as SupportedLanguage);
+    };
+    
+    i18n.on('languageChanged', handleLanguageChange);
+    
+    return () => {
+      i18n.off('languageChanged', handleLanguageChange);
+    };
+  }, [i18n]);
+  
+  return {
+    currentLanguage,
+    languageInfo,
+    languages: SUPPORTED_LANGUAGES,
+    changeLanguage,
+    t,
+    isRTL: languageInfo?.direction === 'rtl',
+  };
+}
+
+// 3. 语言选择器组件 (components/i18n/language-selector.tsx)
+import React from 'react';
+import { Globe, Check } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
+import { useLanguage } from '../../hooks/use-language';
+
+export function LanguageSelector() {
+  const { currentLanguage, languages, changeLanguage, languageInfo } = useLanguage();
+  
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="sm" className="gap-2">
+          <Globe size={16} />
+          <span className="hidden sm:inline">{languageInfo?.nativeName}</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        {languages.map((language) => (
+          <DropdownMenuItem
+            key={language.code}
+            onClick={() => changeLanguage(language.code)}
+            className="flex items-center justify-between cursor-pointer"
+          >
+            <span>{language.nativeName}</span>
+            {currentLanguage === language.code && (
+              <Check size={16} className="text-primary" />
+            )}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+// 4. 日期/数字格式化工具 (utils/i18n-formatters.ts)
+import { SupportedLanguage } from '../config/i18n.config';
+
+// 格式化日期
+export function formatDate(
+  date: Date | string | number,
+  locale: SupportedLanguage,
+  options: Intl.DateTimeFormatOptions = {}
+): string {
+  const dateObj = typeof date === 'string' || typeof date === 'number' ? new Date(date) : date;
+  
+  const defaultOptions: Intl.DateTimeFormatOptions = {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    ...options,
+  };
+  
+  return new Intl.DateTimeFormat(locale, defaultOptions).format(dateObj);
+}
+
+// 格式化日期时间
+export function formatDateTime(
+  date: Date | string | number,
+  locale: SupportedLanguage,
+  options: Intl.DateTimeFormatOptions = {}
+): string {
+  const dateObj = typeof date === 'string' || typeof date === 'number' ? new Date(date) : date;
+  
+  const defaultOptions: Intl.DateTimeFormatOptions = {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    ...options,
+  };
+  
+  return new Intl.DateTimeFormat(locale, defaultOptions).format(dateObj);
+}
+
+// 格式化相对时间
+export function formatRelativeTime(
+  date: Date | string | number,
+  locale: SupportedLanguage
+): string {
+  const dateObj = typeof date === 'string' || typeof date === 'number' ? new Date(date) : date;
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - dateObj.getTime()) / 1000);
+  
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+  
+  if (diffInSeconds < 60) {
+    return rtf.format(-diffInSeconds, 'second');
+  } else if (diffInSeconds < 3600) {
+    return rtf.format(-Math.floor(diffInSeconds / 60), 'minute');
+  } else if (diffInSeconds < 86400) {
+    return rtf.format(-Math.floor(diffInSeconds / 3600), 'hour');
+  } else if (diffInSeconds < 2592000) {
+    return rtf.format(-Math.floor(diffInSeconds / 86400), 'day');
+  } else if (diffInSeconds < 31536000) {
+    return rtf.format(-Math.floor(diffInSeconds / 2592000), 'month');
+  } else {
+    return rtf.format(-Math.floor(diffInSeconds / 31536000), 'year');
+  }
+}
+
+// 格式化数字
+export function formatNumber(
+  value: number,
+  locale: SupportedLanguage,
+  options: Intl.NumberFormatOptions = {}
+): string {
+  return new Intl.NumberFormat(locale, options).format(value);
+}
+
+// 格式化货币
+export function formatCurrency(
+  value: number,
+  locale: SupportedLanguage,
+  currency: string = 'CNY'
+): string {
+  return new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency,
+  }).format(value);
+}
+
+// 格式化百分比
+export function formatPercent(
+  value: number,
+  locale: SupportedLanguage,
+  options: Intl.NumberFormatOptions = {}
+): string {
+  return new Intl.NumberFormat(locale, {
+    style: 'percent',
+    ...options,
+  }).format(value);
+}
+—————————————————————————————————————————————————————————
+创建示例翻译文件：
+// public/locales/zh-CN/common.json
+{
+  "app": {
+    "name": "YanYu Cloud³",
+    "tagline": "智能商务管理系统"
+  },
+  "nav": {
+    "dashboard": "仪表盘",
+    "tickets": "工单管理",
+    "orders": "订单管理",
+    "inventory": "库存管理",
+    "reports": "报表分析",
+    "settings": "系统设置"
+  },
+  "common": {
+    "save": "保存",
+    "cancel": "取消",
+    "delete": "删除",
+    "edit": "编辑",
+    "search": "搜索",
+    "filter": "筛选",
+    "export": "导出",
+    "import": "导入",
+    "loading": "加载中...",
+    "noData": "暂无数据",
+    "confirm": "确认",
+    "success": "成功",
+    "error": "错误",
+    "warning": "警告"
+  },
+  "validation": {
+    "required": "此字段为必填项",
+    "email": "请输入有效的邮箱地址",
+    "minLength": "最少需要 {{count}} 个字符",
+    "maxLength": "最多只能 {{count}} 个字符"
+  }
+}
+
+// public/locales/en-US/common.json
+{
+  "app": {
+    "name": "YanYu Cloud³",
+    "tagline": "Intelligent Business Management System"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "tickets": "Ticket Management",
+    "orders": "Order Management",
+    "inventory": "Inventory Management",
+    "reports": "Reports & Analytics",
+    "settings": "System Settings"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "search": "Search",
+    "filter": "Filter",
+    "export": "Export",
+    "import": "Import",
+    "loading": "Loading...",
+    "noData": "No data available",
+    "confirm": "Confirm",
+    "success": "Success",
+    "error": "Error",
+    "warning": "Warning"
+  },
+  "validation": {
+    "required": "This field is required",
+    "email": "Please enter a valid email address",
+    "minLength": "Minimum {{count}} characters required",
+    "maxLength": "Maximum {{count}} characters allowed"
+  }
+}
+—————————————————————————————————————————————————————————
+预期影响：
+- 扩大全球市场覆盖范围
+- 提升国际用户体验
+- 增强品牌国际化形象
+- 支持多区域业务运营
+- 简化本地化管理流程

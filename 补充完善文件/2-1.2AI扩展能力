@@ -1,0 +1,2632 @@
+# AI 能力扩展
+### 当前问题：
+系统AI能力局限于对账分析场景，模型响应速度较慢，提示词工程不够优化，缺少多模态支持和高级分析功能。
+### 改进建议：
+1. 扩展AI应用场景（用户行为分析、异常检测、智能推荐）
+2. 优化AI模型加载和调用流程，提升响应速度
+3. 引入批量处理和任务队列机制
+4. 优化提示词工程，减少 Token 消耗，提升准确性
+5. 实现多模态和文档分析能力
+## 🗂️ 完整的文件结构建议
+——————————————————————————————————————————————
+src/services/ai/
+├── base.service.ts              # 基础AI服务（已提供）
+├── user-behavior.service.ts     # 用户行为分析服务（已提供）
+├── queue.service.ts             # AI任务队列服务（已提供）
+├── document-recommendation.service.ts  # 文档分析和推荐服务（当前文件）
+├── index.ts                     # 统一导出
+└── types/
+    ├── ai-task.types.ts         # AI任务相关类型
+    ├── document.types.ts        # 文档分析类型
+    └── recommendation.types.ts  # 推荐服务类型
+——————————————————————————————————————————————
+src/services/ai/types/ai-task.types.ts
+// AI任务相关类型定义
+export type AITaskType = 
+  | 'user_behavior_analysis' 
+  | 'churn_prediction' 
+  | 'document_analysis'
+  | 'content_generation'
+  | 'data_processing'
+  | 'sentiment_analysis'
+  | 'recommendation'
+  | 'custom';
+
+export interface AITask {
+  id: string;
+  type: AITaskType;
+  data: any;
+  metadata?: {
+    userId?: string;
+    projectId?: string;
+    priority?: 'low' | 'normal' | 'high' | 'critical';
+    tags?: string[];
+    source?: string;
+  };
+  options?: {
+    priority?: number;
+    attempts?: number;
+    timeout?: number;
+    delay?: number;
+  };
+  callback?: {
+    url?: string;
+    event?: string;
+    webhook?: string;
+    headers?: Record<string, string>;
+  };
+}
+
+export interface AITaskResult {
+  id: string;
+  result: any;
+  error?: string;
+  processingTime: number;
+  status: 'completed' | 'failed' | 'cancelled' | 'timeout';
+  completedAt: string;
+  metadata?: any;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+}
+
+export interface TaskProgress {
+  taskId: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  progress: number;
+  currentStep?: string;
+  estimatedTimeRemaining?: number;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+export interface QueueStats {
+  waiting: number;
+  active: number;
+  completed: number;
+  failed: number;
+  delayed: number;
+  paused: number;
+}
+
+export interface BatchTaskRequest {
+  tasks: AITask[];
+  batchId: string;
+  options?: {
+    concurrency?: number;
+    timeout?: number;
+    onProgress?: (progress: BatchProgress) => void;
+  };
+}
+
+export interface BatchProgress {
+  batchId: string;
+  total: number;
+  completed: number;
+  failed: number;
+  processing: number;
+  progress: number;
+  results: Record<string, AITaskResult>;
+}
+——————————————————————————————————————————————
+src/services/ai/types/document.types.ts
+// 文档分析相关类型定义
+export interface ExtractionResult {
+  success: boolean;
+  data: Record<string, any>;
+  confidence: number;
+  missingFields: string[];
+  warnings: string[];
+  processedAt: string;
+  metadata?: {
+    extractionTime: number;
+    documentSize: number;
+    fieldCoverage: number;
+  };
+}
+
+export interface DocumentComparisonResult {
+  similarityScore: number;
+  differences: string[];
+  aspects?: Record<string, { similarity: number; details: string }>;
+  summary: string;
+  metadata?: {
+    comparisonTime: number;
+    docASize: number;
+    docBSize: number;
+  };
+}
+
+export interface DocumentSummaryResult {
+  summary: string;
+  keyPoints?: string[];
+  length: number;
+  coverage: number;
+  style: 'concise' | 'detailed' | 'bullet' | 'executive';
+  metadata?: {
+    generationTime: number;
+    originalLength: number;
+    compressionRatio: number;
+  };
+}
+
+export interface DocumentClassificationResult {
+  primaryCategory: string;
+  confidence: number;
+  allCategories: Array<{ category: string; confidence: number; reasoning: string }>;
+  metadata?: {
+    classificationTime: number;
+    categoriesConsidered: number;
+  };
+}
+
+export interface DocumentQualityAssessment {
+  score: number;
+  aspects: {
+    clarity: number;
+    coherence: number;
+    completeness: number;
+    conciseness: number;
+    accuracy?: number;
+    relevance?: number;
+  };
+  suggestions: string[];
+  overallFeedback: string;
+  metadata?: {
+    assessmentTime: number;
+    documentComplexity: 'low' | 'medium' | 'high';
+  };
+}
+
+export interface ExtractionSchema {
+  [key: string]: {
+    description: string;
+    type: 'string' | 'number' | 'date' | 'boolean' | 'array';
+    required?: boolean;
+    validation?: {
+      pattern?: string;
+      min?: number;
+      max?: number;
+      options?: string[];
+    };
+  };
+}
+
+export interface DocumentProcessingOptions {
+  maxDocumentLength?: number;
+  language?: string;
+  format?: 'auto' | 'text' | 'markdown' | 'html';
+  includeMetadata?: boolean;
+  timeout?: number;
+}
+————————————————————————————————————————————————
+src/services/ai/types/recommendation.types.ts
+// 推荐服务相关类型定义
+export interface RecommendationItem {
+  id: string;
+  score: number;
+  reason: string;
+  metadata?: any;
+  confidence?: number;
+  categories?: string[];
+  features?: Record<string, any>;
+}
+
+export interface RecommendationContext {
+  userId: string;
+  userPreferences?: Record<string, any>;
+  demographics?: {
+    age?: number;
+    gender?: string;
+    location?: string;
+    interests?: string[];
+  };
+  currentContext?: string;
+  exclusionList?: string[];
+  diversity?: number;
+  freshness?: number; // 0-1, 推荐新颖性
+  popularity?: number; // 0-1, 考虑流行度
+}
+
+export interface UserInteraction {
+  itemId: string;
+  interactionType: 'view' | 'click' | 'purchase' | 'rating' | 'share' | 'save';
+  timestamp: string;
+  rating?: number;
+  duration?: number;
+  context?: any;
+}
+
+export interface ItemMetadata {
+  id: string;
+  title?: string;
+  description?: string;
+  categories?: string[];
+  tags?: string[];
+  features?: Record<string, any>;
+  popularity?: number;
+  freshness?: number;
+  quality?: number;
+}
+
+export interface RecommendationResult {
+  items: RecommendationItem[];
+  context: RecommendationContext;
+  metadata: {
+    generationTime: number;
+    totalItemsConsidered: number;
+    algorithm: 'content_based' | 'collaborative' | 'hybrid' | 'ai_powered';
+    diversityScore?: number;
+    coverageScore?: number;
+  };
+  pagination?: {
+    page: number;
+    pageSize: number;
+    total: number;
+    hasMore: boolean;
+  };
+}
+
+export interface SimilarItemsRequest {
+  itemId: string;
+  itemDetails: any;
+  candidateItems: ItemMetadata[];
+  options?: {
+    count?: number;
+    similarityDimensions?: string[];
+    excludeOriginal?: boolean;
+    minSimilarity?: number;
+  };
+}
+
+export interface RecommendationStrategy {
+  name: string;
+  weight: number;
+  description: string;
+  parameters?: Record<string, any>;
+}
+
+export interface RecommendationEngineConfig {
+  strategies: RecommendationStrategy[];
+  fallbackStrategy?: string;
+  maxRetries?: number;
+  cacheTtl?: number;
+  diversityPenalty?: number;
+  freshnessBoost?: number;
+}
+——————————————————————————————————————————————
+src/services/ai/base.service.ts
+import OpenAI from 'openai';
+import { logger } from '../../config/logger';
+import { TokenUsageMetrics } from '../../config/metrics';
+import { AppError } from '../../utils/app-error';
+import { ErrorCode } from '../../constants/error-codes';
+import { redis } from '../../config/redis';
+
+export abstract class BaseAIService {
+  protected openai: OpenAI;
+  protected defaultModel: string;
+  protected requestTimeout: number;
+  protected maxRetries: number;
+  
+  constructor(serviceName: string = 'BaseAIService') {
+    this.openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+      organization: process.env.OPENAI_ORGANIZATION,
+      timeout: Number(process.env.OPENAI_TIMEOUT || 30000),
+      maxRetries: Number(process.env.OPENAI_MAX_RETRIES || 3),
+    });
+    this.defaultModel = process.env.OPENAI_MODEL || 'gpt-4o';
+    this.requestTimeout = Number(process.env.OPENAI_TIMEOUT || 30000);
+    this.maxRetries = Number(process.env.OPENAI_MAX_RETRIES || 3);
+    
+    logger.info(`${serviceName} initialized`, {
+      model: this.defaultModel,
+      timeout: this.requestTimeout,
+      maxRetries: this.maxRetries,
+    });
+  }
+  
+  // 智能缓存机制
+  protected async withCache<T>(
+    cacheKey: string,
+    generator: () => Promise<T>,
+    ttl: number = 3600, // 默认1小时
+    options: { 
+      useContentHash?: boolean; 
+      content?: string;
+      prefix?: string;
+    } = {}
+  ): Promise<T> {
+    const { useContentHash = false, content, prefix = 'ai' } = options;
+    
+    let finalCacheKey = `${prefix}:${cacheKey}`;
+    
+    // 如果启用内容哈希，基于内容生成更精确的缓存键
+    if (useContentHash && content) {
+      const crypto = await import('crypto');
+      const contentHash = crypto
+        .createHash('md5')
+        .update(content)
+        .digest('hex')
+        .substring(0, 12);
+      finalCacheKey = `${finalCacheKey}:${contentHash}`;
+    }
+    
+    try {
+      const cacheData = await redis.get(finalCacheKey);
+      
+      // 缓存命中
+      if (cacheData) {
+        try {
+          const parsed = JSON.parse(cacheData);
+          logger.debug('AI cache hit', { cacheKey: finalCacheKey });
+          return parsed;
+        } catch (error) {
+          logger.warn('AI cache parse error', { 
+            cacheKey: finalCacheKey, 
+            error: error.message 
+          });
+        }
+      }
+    } catch (error) {
+      logger.warn('Redis cache access error', { 
+        cacheKey: finalCacheKey, 
+        error: error.message 
+      });
+    }
+    
+    // 缓存未命中，执行生成
+    logger.debug('AI cache miss', { cacheKey: finalCacheKey });
+    const result = await generator();
+    
+    // 更新缓存
+    try {
+      await redis.setex(finalCacheKey, ttl, JSON.stringify(result));
+      logger.debug('AI cache updated', { 
+        cacheKey: finalCacheKey, 
+        ttl 
+      });
+    } catch (error) {
+      logger.warn('Failed to cache AI result', { 
+        cacheKey: finalCacheKey, 
+        error: error.message 
+      });
+    }
+    
+    return result;
+  }
+  
+  // AI请求重试封装
+  protected async withRetry<T>(
+    operation: () => Promise<T>,
+    options: {
+      retries?: number;
+      initialDelay?: number;
+      maxDelay?: number;
+      backoffFactor?: number;
+      context?: string;
+    } = {}
+  ): Promise<T> {
+    const {
+      retries = this.maxRetries,
+      initialDelay = 1000,
+      maxDelay = 30000,
+      backoffFactor = 2,
+      context = 'AI operation'
+    } = options;
+    
+    let lastError: any;
+    
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error;
+        
+        // 判断是否应该重试
+        if (!this.isRetryable(error) || attempt === retries) {
+          throw this.normalizeAIError(error, context);
+        }
+        
+        // 指数退避延迟，带随机抖动
+        const baseDelay = initialDelay * Math.pow(backoffFactor, attempt);
+        const jitter = baseDelay * 0.1 * Math.random(); // 10% 随机抖动
+        const delay = Math.min(baseDelay + jitter, maxDelay);
+        
+        logger.warn(`AI request failed, retrying (${attempt + 1}/${retries})`, {
+          context,
+          error: error.message,
+          delay: Math.round(delay),
+          status: error.status,
+          code: error.code,
+        });
+        
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    
+    throw this.normalizeAIError(lastError, context);
+  }
+  
+  // 判断错误是否可重试
+  private isRetryable(error: any): boolean {
+    // 429 Too Many Requests - 速率限制
+    // 500, 502, 503, 504 - 服务器错误
+    if (error.status && [429, 500, 502, 503, 504].includes(error.status)) {
+      return true;
+    }
+    
+    // 网络错误
+    if (error.code === 'ETIMEDOUT' || error.code === 'ECONNRESET' || error.code === 'ECONNREFUSED') {
+      return true;
+    }
+    
+    // OpenAI API 特定错误
+    if (error.code === 'insufficient_quota' || error.code === 'rate_limit_exceeded') {
+      return true;
+    }
+    
+    // 超时错误
+    if (error.name === 'TimeoutError' || error.code === 'TIMEOUT') {
+      return true;
+    }
+    
+    return false;
+  }
+  
+  // 标准化 AI 错误
+  private normalizeAIError(error: any, context: string = 'AI operation'): AppError {
+    if (error instanceof AppError) {
+      return error;
+    }
+    
+    // OpenAI API 错误
+    if (error.status === 429) {
+      return new AppError(
+        `${context}：服务速率限制，请稍后重试`,
+        429,
+        ErrorCode.AI_RATE_LIMIT
+      );
+    }
+    
+    if (error.status === 401) {
+      return new AppError(
+        `${context}：服务认证失败`,
+        401,
+        ErrorCode.AI_AUTH_ERROR
+      );
+    }
+    
+    if (error.status === 403) {
+      return new AppError(
+        `${context}：服务访问被拒绝`,
+        403,
+        ErrorCode.AI_ACCESS_DENIED
+      );
+    }
+    
+    // 网络超时
+    if (error.code === 'ETIMEDOUT' || error.name === 'TimeoutError') {
+      return new AppError(
+        `${context}：请求超时`,
+        408,
+        ErrorCode.AI_TIMEOUT
+      );
+    }
+    
+    // 配额不足
+    if (error.code === 'insufficient_quota') {
+      return new AppError(
+        `${context}：服务配额不足`,
+        429,
+        ErrorCode.AI_QUOTA_EXCEEDED
+      );
+    }
+    
+    // 其他错误
+    const message = error.message || '未知错误';
+    return new AppError(
+      `${context}失败: ${message}`,
+      500,
+      ErrorCode.AI_PROCESSING_ERROR
+    );
+  }
+  
+  // 记录 token 使用情况
+  protected trackTokenUsage(
+    model: string, 
+    usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number },
+    metadata?: Record<string, any>
+  ): void {
+    TokenUsageMetrics.inc({
+      model,
+      type: 'prompt',
+      count: usage.prompt_tokens,
+      ...metadata,
+    });
+    
+    TokenUsageMetrics.inc({
+      model,
+      type: 'completion',
+      count: usage.completion_tokens,
+      ...metadata,
+    });
+    
+    TokenUsageMetrics.inc({
+      model,
+      type: 'total',
+      count: usage.total_tokens,
+      ...metadata,
+    });
+    
+    // 记录详细日志
+    logger.debug('AI token usage tracked', {
+      model,
+      prompt_tokens: usage.prompt_tokens,
+      completion_tokens: usage.completion_tokens,
+      total_tokens: usage.total_tokens,
+      estimatedCost: this.estimateCost(model, usage.prompt_tokens, usage.completion_tokens),
+      ...metadata,
+    });
+  }
+  
+  // 计算预估成本
+  protected estimateCost(
+    model: string,
+    promptTokens: number,
+    completionTokens: number
+  ): number {
+    const costRates: Record<string, { input: number; output: number }> = {
+      'gpt-4o': { input: 2.5, output: 10 }, // $2.5/1M input, $10/1M output
+      'gpt-4': { input: 30, output: 60 },
+      'gpt-3.5-turbo': { input: 0.5, output: 1.5 },
+    };
+    
+    const rates = costRates[model] || costRates['gpt-4o'];
+    const inputCost = (promptTokens / 1000000) * rates.input;
+    const outputCost = (completionTokens / 1000000) * rates.output;
+    
+    return Number((inputCost + outputCost).toFixed(6));
+  }
+  
+  // 验证 API 密钥
+  protected validateApiKey(): void {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new AppError(
+        'OpenAI API密钥未配置',
+        500,
+        ErrorCode.AI_CONFIG_ERROR
+      );
+    }
+  }
+  
+  // 清理敏感数据
+  protected sanitizeData(data: any): any {
+    if (typeof data !== 'object' || data === null) {
+      return data;
+    }
+    
+    const sensitiveFields = ['password', 'token', 'secret', 'key', 'authorization'];
+    const sanitized = { ...data };
+    
+    for (const key in sanitized) {
+      if (sensitiveFields.some(field => key.toLowerCase().includes(field))) {
+        sanitized[key] = '***REDACTED***';
+      } else if (typeof sanitized[key] === 'object') {
+        sanitized[key] = this.sanitizeData(sanitized[key]);
+      }
+    }
+    
+    return sanitized;
+  }
+}
+——————————————————————————————————————————————
+src/services/ai/user-behavior.service.ts
+import { BaseAIService } from './base.service';
+import { logger } from '../../config/logger';
+import { AppError } from '../../utils/app-error';
+import { ErrorCode } from '../../constants/error-codes';
+
+// 用户行为分析相关类型
+export interface UserBehaviorPattern {
+  pattern: string;
+  confidence: number;
+  suggestedActions?: string[];
+  details?: {
+    frequency?: string;
+    impact?: 'high' | 'medium' | 'low';
+    trend?: 'increasing' | 'decreasing' | 'stable';
+    riskLevel?: 'low' | 'medium' | 'high';
+  };
+}
+
+export interface ChurnRiskAnalysis {
+  risk: number;
+  factors: string[];
+  riskLevel: 'low' | 'medium' | 'high' | 'critical';
+  recommendations: string[];
+  nextBestAction?: string;
+  confidence: number;
+  metadata?: {
+    analysisDate: string;
+    dataPoints: number;
+    modelVersion: string;
+  };
+}
+
+export interface UserSegment {
+  name: string;
+  description: string;
+  userCount: number;
+  characteristics: string[];
+  targetUsers: string[];
+  engagementLevel: 'high' | 'medium' | 'low';
+  potentialValue: number;
+}
+
+export class UserBehaviorAnalysisService extends BaseAIService {
+  constructor() {
+    super('UserBehaviorAnalysisService');
+  }
+  
+  // 分析用户行为模式
+  async analyzeUserBehavior(
+    userId: string,
+    behaviors: Array<{ action: string, timestamp: string, context?: any }>,
+    options: { 
+      maxBehaviors?: number; 
+      includeSuggestions?: boolean;
+      timeRange?: { start: string; end: string };
+    } = {}
+  ): Promise<UserBehaviorPattern[]> {
+    const { maxBehaviors = 50, includeSuggestions = true, timeRange } = options;
+    
+    // 优化提示词，减少 token 消耗
+    const timeRangeStr = timeRange 
+      ? `时间范围: ${timeRange.start} 至 ${timeRange.end}\n`
+      : '';
+    
+    const prompt = `
+分析用户行为数据，识别关键模式并提供洞察。请保持分析简洁、实用。
+
+用户ID: ${userId}
+${timeRangeStr}行为记录数量: ${behaviors.length}
+分析样本: ${Math.min(behaviors.length, maxBehaviors)} 条记录
+
+行为样本:
+${behaviors
+  .slice(0, maxBehaviors)
+  .map((b, i) => `${i + 1}. ${b.action} - ${new Date(b.timestamp).toLocaleDateString('zh-CN')}${b.context ? ` (${JSON.stringify(b.context)})` : ''}`)
+  .join('\n')}
+
+请分析:
+1. 主要行为模式（如使用频率、时间规律、功能偏好等）
+2. 异常行为或变化趋势
+3. ${includeSuggestions ? '针对性改进建议' : '关键洞察'}
+
+请以JSON格式返回，结构如下:
+{
+  "patterns": [
+    {
+      "pattern": "模式描述",
+      "confidence": 0.85,
+      ${includeSuggestions ? '"suggestedActions": ["建议1", "建议2"],' : ''}
+      "details": {
+        "frequency": "模式频率",
+        "impact": "业务影响",
+        "trend": "变化趋势"
+      }
+    }
+  ],
+  "summary": "总体分析摘要",
+  "keyInsights": ["关键洞察1", "关键洞察2"]
+}
+`;
+
+    try {
+      return await this.withRetry(async () => {
+        const response = await this.openai.chat.completions.create({
+          model: this.defaultModel,
+          messages: [
+            {
+              role: 'system',
+              content: '你是一个专业的用户行为分析师。请提供准确、实用的行为模式分析，避免过度解读。'
+            },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.2,
+          max_tokens: 2000,
+          response_format: { type: 'json_object' },
+        });
+        
+        // 记录token使用
+        if (response.usage) {
+          this.trackTokenUsage(this.defaultModel, response.usage, {
+            userId,
+            analysisType: 'behavior_analysis',
+            behaviorCount: behaviors.length,
+            timeRange: timeRange ? 'custom' : 'all',
+          });
+        }
+        
+        // 解析响应
+        const content = response.choices[0]?.message?.content || '{}';
+        try {
+          const parsedResponse = JSON.parse(content);
+          return parsedResponse.patterns || [];
+        } catch (error) {
+          logger.error('Failed to parse AI behavior analysis response', { 
+            userId, 
+            content: content.substring(0, 200),
+            error: error.message 
+          });
+          return [];
+        }
+      }, { context: '用户行为分析' });
+    } catch (error) {
+      logger.error('User behavior analysis failed', { 
+        userId, 
+        error: error.message,
+        behaviorCount: behaviors.length 
+      });
+      throw new AppError('用户行为分析失败', 500, ErrorCode.AI_PROCESSING_ERROR);
+    }
+  }
+  
+  // 预测用户流失风险 - 增强版本
+  async predictChurnRisk(
+    userId: string, 
+    userData: any
+  ): Promise<ChurnRiskAnalysis> {
+    const cacheKey = `churn_risk:${userId}:${userData.lastActivityDate || 'unknown'}`;
+    
+    return this.withCache(cacheKey, async () => {
+      const prompt = `
+基于用户数据评估流失风险并提供改善建议。
+
+用户资料:
+- 用户ID: ${userId}
+- 注册时间: ${userData.registrationDate}
+- 最后活跃: ${userData.lastActivityDate}
+- 活跃频率: ${userData.activityFrequency} 次/周
+- 使用功能: ${userData.usedFeatures?.join(', ') || '无'}
+- 用户类型: ${userData.customerType}
+- 付费状态: ${userData.subscriptionStatus || '未知'}
+- 历史问题: ${userData.issues?.length > 0 ? userData.issues.join('; ') : '无'}
+- 满意度评分: ${userData.satisfactionScore || '未评分'}
+- 支持互动: ${userData.supportInteractions || 0} 次
+
+分析要求:
+1. 流失风险评分 (0-100)
+2. 主要风险因素 (按重要性排序)
+3. 风险等级 (low/medium/high/critical)
+4. 具体改善建议
+5. 下一步最佳行动
+6. 分析置信度 (0-1)
+
+请返回JSON格式:
+{
+  "risk": 65,
+  "factors": ["因素1", "因素2"],
+  "riskLevel": "medium",
+  "recommendations": ["建议1", "建议2"],
+  "nextBestAction": "具体行动建议",
+  "confidence": 0.85
+}
+`;
+
+      try {
+        return await this.withRetry(async () => {
+          const response = await this.openai.chat.completions.create({
+            model: this.defaultModel,
+            messages: [
+              {
+                role: 'system',
+                content: '你是一个专业的客户成功分析师。基于数据提供准确的流失风险评估和可行的改善建议。考虑用户生命周期价值、互动频率和满意度。'
+              },
+              { role: 'user', content: prompt }
+            ],
+            temperature: 0.1,
+            max_tokens: 1500,
+            response_format: { type: 'json_object' },
+          });
+          
+          // 记录token使用
+          if (response.usage) {
+            this.trackTokenUsage(this.defaultModel, response.usage, {
+              userId,
+              analysisType: 'churn_prediction',
+              customerType: userData.customerType,
+              dataCompleteness: this.calculateDataCompleteness(userData),
+            });
+          }
+          
+          // 解析响应
+          const content = response.choices[0]?.message?.content || '{}';
+          try {
+            const result = JSON.parse(content);
+            
+            // 验证结果格式
+            if (typeof result.risk !== 'number' || !Array.isArray(result.factors)) {
+              throw new Error('Invalid response format');
+            }
+            
+            // 添加元数据
+            result.metadata = {
+              analysisDate: new Date().toISOString(),
+              dataPoints: Object.keys(userData).length,
+              modelVersion: '1.0',
+            };
+            
+            return result;
+          } catch (error) {
+            logger.error('Failed to parse churn prediction response', { 
+              userId, 
+              content: content.substring(0, 200),
+              error: error.message 
+            });
+            
+            // 返回默认结果
+            return {
+              risk: 50,
+              factors: ['数据解析错误'],
+              riskLevel: 'medium' as const,
+              recommendations: ['请检查用户数据完整性'],
+              nextBestAction: '联系用户了解使用情况',
+              confidence: 0.3,
+              metadata: {
+                analysisDate: new Date().toISOString(),
+                dataPoints: 0,
+                modelVersion: 'fallback',
+              }
+            };
+          }
+        }, { context: '流失风险预测' });
+      } catch (error) {
+        logger.error('Churn prediction failed', { 
+          userId, 
+          error: error.message 
+        });
+        throw new AppError('流失预测分析失败', 500, ErrorCode.AI_PROCESSING_ERROR);
+      }
+    }, 24 * 60 * 60); // 缓存24小时
+  }
+  
+  // 用户分群分析
+  async segmentUsers(
+    users: Array<{ id: string; behaviors: any[]; attributes: any }>,
+    segmentCount: number = 4
+  ): Promise<{
+    segments: UserSegment[];
+    insights: string[];
+    metadata: {
+      totalUsers: number;
+      segmentationMethod: 'behavioral' | 'demographic' | 'hybrid';
+      qualityScore: number;
+    };
+  }> {
+    const userSamples = users.slice(0, 50); // 限制样本数量
+    
+    const prompt = `
+基于以下用户数据进行分析分群：
+
+用户数据样本 (共${users.length}个用户，展示${userSamples.length}个样本):
+${userSamples.map((user, index) => `
+用户 ${index + 1} (ID: ${user.id}):
+- 属性: ${JSON.stringify(user.attributes)}
+- 关键行为: ${user.behaviors.slice(0, 5).map(b => b.action).join(', ')}
+`).join('\n')}
+
+请将用户分成 ${segmentCount} 个有意义的群组，每个群组包含：
+1. 群组名称
+2. 群组描述
+3. 用户数量估计
+4. 主要特征
+5. 参与度水平 (high/medium/low)
+6. 潜在价值评估
+
+同时提供3-5个关键业务洞察。
+
+返回JSON格式。
+`;
+
+    try {
+      return await this.withRetry(async () => {
+        const response = await this.openai.chat.completions.create({
+          model: this.defaultModel,
+          messages: [
+            {
+              role: 'system',
+              content: '你是一个专业的用户分群专家。基于行为和属性特征创建有意义的用户分群，为每个分群提供清晰的描述和价值评估。'
+            },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.3,
+          max_tokens: 2500,
+          response_format: { type: 'json_object' },
+        });
+        
+        if (response.usage) {
+          this.trackTokenUsage(this.defaultModel, response.usage, {
+            analysisType: 'user_segmentation',
+            userCount: users.length,
+            segmentCount,
+          });
+        }
+        
+        const content = response.choices[0]?.message?.content || '{}';
+        try {
+          const result = JSON.parse(content);
+          
+          return {
+            segments: result.segments || [],
+            insights: result.insights || [],
+            metadata: {
+              totalUsers: users.length,
+              segmentationMethod: 'behavioral',
+              qualityScore: 0.8,
+            }
+          };
+        } catch (error) {
+          logger.error('Failed to parse user segmentation response', { 
+            error: error.message,
+            content: content.substring(0, 200)
+          });
+          
+          return {
+            segments: [],
+            insights: ['分群分析失败'],
+            metadata: {
+              totalUsers: users.length,
+              segmentationMethod: 'behavioral',
+              qualityScore: 0,
+            }
+          };
+        }
+      }, { context: '用户分群分析' });
+    } catch (error) {
+      logger.error('User segmentation failed', { error: error.message });
+      throw new AppError('用户分群分析失败', 500, ErrorCode.AI_PROCESSING_ERROR);
+    }
+  }
+  
+  // 计算数据完整性分数
+  private calculateDataCompleteness(userData: any): number {
+    const requiredFields = [
+      'registrationDate',
+      'lastActivityDate', 
+      'activityFrequency',
+      'customerType'
+    ];
+    
+    const presentFields = requiredFields.filter(field => 
+      userData[field] !== undefined && userData[field] !== null
+    );
+    
+    return presentFields.length / requiredFields.length;
+  }
+}
+——————————————————————————————————————————————
+src/services/ai/queue.service.ts
+import Bull from 'bull';
+import { logger } from '../../config/logger';
+import { AppError } from '../../utils/app-error';
+import { ErrorCode } from '../../constants/error-codes';
+import { 
+  AITask, 
+  AITaskResult, 
+  AITaskType, 
+  QueueStats,
+  TaskProgress,
+  BatchTaskRequest,
+  BatchProgress
+} from './types/ai-task.types';
+import { UserBehaviorAnalysisService } from './user-behavior.service';
+import { DocumentAnalysisService, RecommendationService } from './document-recommendation.service';
+
+export class AIQueueService {
+  private static instance: AIQueueService;
+  private queue: Bull.Queue;
+  private behaviorService: UserBehaviorAnalysisService;
+  private documentService: DocumentAnalysisService;
+  private recommendationService: RecommendationService;
+  private initialized = false;
+  private batchProgress: Map<string, BatchProgress> = new Map();
+
+  private constructor() {
+    this.queue = new Bull('ai-tasks', {
+      redis: {
+        host: process.env.REDIS_HOST || 'localhost',
+        port: Number(process.env.REDIS_PORT || 6379),
+        password: process.env.REDIS_PASSWORD,
+        db: Number(process.env.REDIS_DB || 0),
+      },
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 5000,
+        },
+        removeOnComplete: 1000,
+        removeOnFail: 500,
+        timeout: 5 * 60 * 1000, // 5分钟超时
+      },
+    });
+
+    this.behaviorService = new UserBehaviorAnalysisService();
+    this.documentService = new DocumentAnalysisService();
+    this.recommendationService = new RecommendationService();
+  }
+
+  static getInstance(): AIQueueService {
+    if (!AIQueueService.instance) {
+      AIQueueService.instance = new AIQueueService();
+    }
+    return AIQueueService.instance;
+  }
+
+  initialize(): void {
+    if (this.initialized) return;
+
+    // 注册处理器
+    this.queue.process('*', async (job) => {
+      return await this.processTask(job.data);
+    });
+
+    // 监听事件
+    this.queue.on('completed', (job, result) => {
+      logger.info('AI task completed', {
+        taskId: job.data.id,
+        type: job.data.type,
+        processingTime: job.finishedOn - job.processedOn,
+      });
+    });
+
+    this.queue.on('failed', (job, error) => {
+      logger.error('AI task failed', {
+        taskId: job.data.id,
+        type: job.data.type,
+        error: error.message,
+        attempt: job.attemptsMade,
+      });
+    });
+
+    this.queue.on('stalled', (job) => {
+      logger.warn('AI task stalled', { taskId: job.data.id });
+    });
+
+    this.queue.on('error', (error) => {
+      logger.error('AI queue error', { error: error.message });
+    });
+
+    this.initialized = true;
+    logger.info('AI queue service initialized');
+  }
+
+  async addTask(task: AITask): Promise<string> {
+    if (!this.initialized) {
+      this.initialize();
+    }
+
+    if (!task.id || !task.type) {
+      throw new AppError('Task must have id and type', 400, ErrorCode.INVALID_INPUT);
+    }
+
+    const options: Bull.JobOptions = {
+      jobId: task.id,
+      priority: this.getPriorityValue(task.metadata?.priority),
+      attempts: task.options?.attempts || 3,
+      timeout: task.options?.timeout || 5 * 60 * 1000,
+      delay: task.options?.delay,
+      removeOnComplete: 1000,
+      removeOnFail: 500,
+    };
+
+    await this.queue.add(task, options);
+    logger.info('AI task added to queue', { taskId: task.id, type: task.type });
+
+    return task.id;
+  }
+
+  async addBatchTasks(batchRequest: BatchTaskRequest): Promise<string> {
+    const { tasks, batchId, options = {} } = batchRequest;
+    
+    // 初始化批次进度
+    const batchProgress: BatchProgress = {
+      batchId,
+      total: tasks.length,
+      completed: 0,
+      failed: 0,
+      processing: 0,
+      progress: 0,
+      results: {},
+    };
+    
+    this.batchProgress.set(batchId, batchProgress);
+    
+    // 添加所有任务到队列
+    const addPromises = tasks.map(task => this.addTask(task));
+    await Promise.all(addPromises);
+    
+    logger.info('Batch tasks added to queue', {
+      batchId,
+      taskCount: tasks.length,
+      concurrency: options.concurrency,
+    });
+    
+    return batchId;
+  }
+
+  async getTaskStatus(taskId: string): Promise<TaskProgress> {
+    if (!this.initialized) {
+      this.initialize();
+    }
+
+    const job = await this.queue.getJob(taskId);
+    if (!job) {
+      return { taskId, status: 'not_found', progress: 0 };
+    }
+
+    const state = await job.getState();
+    const progress = job.progress();
+
+    const statusMap: Record<string, TaskProgress['status']> = {
+      'waiting': 'pending',
+      'active': 'processing',
+      'completed': 'completed',
+      'failed': 'failed',
+      'delayed': 'pending',
+    };
+
+    const taskProgress: TaskProgress = {
+      taskId,
+      status: statusMap[state] || 'pending',
+      progress: progress || 0,
+      startedAt: job.processedOn ? new Date(job.processedOn).toISOString() : undefined,
+      completedAt: job.finishedOn ? new Date(job.finishedOn).toISOString() : undefined,
+    };
+
+    if (state === 'completed') {
+      taskProgress.currentStep = 'completed';
+    } else if (state === 'failed') {
+      taskProgress.currentStep = 'error';
+    }
+
+    return taskProgress;
+  }
+
+  async getBatchProgress(batchId: string): Promise<BatchProgress | null> {
+    return this.batchProgress.get(batchId) || null;
+  }
+
+  async getQueueStats(): Promise<QueueStats> {
+    if (!this.initialized) {
+      this.initialize();
+    }
+
+    const [waiting, active, completed, failed, delayed] = await Promise.all([
+      this.queue.getWaitingCount(),
+      this.queue.getActiveCount(),
+      this.queue.getCompletedCount(),
+      this.queue.getFailedCount(),
+      this.queue.getDelayedCount(),
+    ]);
+
+    return {
+      waiting,
+      active,
+      completed,
+      failed,
+      delayed,
+      paused: 0, // Bull 4 中已移除 paused 计数
+    };
+  }
+
+  async cancelTask(taskId: string): Promise<boolean> {
+    if (!this.initialized) {
+      this.initialize();
+    }
+
+    const job = await this.queue.getJob(taskId);
+    if (!job) {
+      return false;
+    }
+
+    try {
+      await job.remove();
+      logger.info('AI task cancelled', { taskId });
+      return true;
+    } catch (error) {
+      logger.error('Failed to cancel AI task', { taskId, error });
+      return false;
+    }
+  }
+
+  async cleanupCompletedTasks(olderThanHours: number = 24): Promise<number> {
+    if (!this.initialized) {
+      this.initialize();
+    }
+
+    try {
+      // 清理完成的任务
+      const completedCount = await this.queue.clean(
+        olderThanHours * 60 * 60 * 1000,
+        'completed'
+      );
+
+      // 清理失败的任务
+      const failedCount = await this.queue.clean(
+        olderThanHours * 60 * 60 * 1000,
+        'failed'
+      );
+
+      logger.info('Queue cleanup completed', {
+        completedCleaned: completedCount,
+        failedCleaned: failedCount,
+        olderThanHours,
+      });
+
+      return completedCount + failedCount;
+    } catch (error) {
+      logger.error('Queue cleanup failed', { error: error.message });
+      return 0;
+    }
+  }
+
+  private async processTask(task: AITask): Promise<any> {
+    const startTime = Date.now();
+    logger.info('Processing AI task', { taskId: task.id, type: task.type });
+
+    try {
+      let result: any;
+
+      switch (task.type) {
+        case 'user_behavior_analysis':
+          result = await this.behaviorService.analyzeUserBehavior(
+            task.data.userId,
+            task.data.behaviors,
+            task.data.options
+          );
+          break;
+
+        case 'churn_prediction':
+          result = await this.behaviorService.predictChurnRisk(
+            task.data.userId,
+            task.data.userData
+          );
+          break;
+
+        case 'document_analysis':
+          result = await this.documentService.extractInformation(
+            task.data.documentText,
+            task.data.schema,
+            task.data.options
+          );
+          break;
+
+        case 'content_generation':
+          result = await this.documentService.generateSummary(
+            task.data.documentText,
+            task.data.options
+          );
+          break;
+
+        case 'sentiment_analysis':
+          // 可以调用其他服务，这里暂时返回模拟数据
+          result = { sentiment: 'positive', confidence: 0.85 };
+          break;
+
+        case 'recommendation':
+          result = await this.recommendationService.getPersonalizedRecommendations(
+            task.data.context,
+            task.data.userHistory,
+            task.data.availableItems,
+            task.data.count
+          );
+          break;
+
+        case 'custom':
+          result = await this.processCustomTask(task.data);
+          break;
+
+        default:
+          throw new AppError(`Unsupported task type: ${task.type}`, 400, ErrorCode.INVALID_INPUT);
+      }
+
+      const processingTime = Date.now() - startTime;
+
+      // 处理回调
+      await this.handleCallback(task, {
+        id: task.id,
+        result,
+        processingTime,
+        status: 'completed',
+        completedAt: new Date().toISOString(),
+        metadata: task.metadata,
+      });
+
+      return result;
+    } catch (error) {
+      const processingTime = Date.now() - startTime;
+
+      // 处理回调（错误情况）
+      await this.handleCallback(task, {
+        id: task.id,
+        result: null,
+        error: error instanceof Error ? error.message : String(error),
+        processingTime,
+        status: 'failed',
+        completedAt: new Date().toISOString(),
+        metadata: task.metadata,
+      });
+
+      throw error;
+    }
+  }
+
+  private async processCustomTask(data: any): Promise<any> {
+    // 实现自定义任务处理逻辑
+    // 这里可以根据 data.instruction 执行特定操作
+    return { customResult: 'Custom processing completed' };
+  }
+
+  private async handleCallback(task: AITask, result: AITaskResult): Promise<void> {
+    const { callback } = task;
+    if (!callback) return;
+
+    const callbackPromises = [];
+
+    // HTTP 回调
+    if (callback.url) {
+      callbackPromises.push(
+        this.sendHttpCallback(callback.url, result, task.id, callback.headers)
+      );
+    }
+
+    // 事件回调（可以扩展为 WebSocket 或事件总线）
+    if (callback.event) {
+      callbackPromises.push(
+        this.emitEventCallback(callback.event, result, task.id)
+      );
+    }
+
+    if (callbackPromises.length > 0) {
+      try {
+        await Promise.allSettled(callbackPromises);
+        logger.info('AI task callbacks completed', { taskId: task.id });
+      } catch (error) {
+        logger.error('Some AI task callbacks failed', { 
+          taskId: task.id,
+          error: error.message 
+        });
+      }
+    }
+  }
+
+  private async sendHttpCallback(
+    url: string, 
+    result: AITaskResult, 
+    taskId: string,
+    headers?: Record<string, string>
+  ): Promise<void> {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': process.env.CALLBACK_API_KEY || '',
+          'X-Task-Id': taskId,
+          'User-Agent': 'AI-Service/1.0',
+          ...headers,
+        },
+        body: JSON.stringify(result),
+        timeout: 10000, // 10秒超时
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      logger.debug('HTTP callback sent successfully', { taskId, url });
+    } catch (error) {
+      logger.error('HTTP callback failed', { 
+        taskId, 
+        url,
+        error: error.message 
+      });
+      throw error;
+    }
+  }
+
+  private async emitEventCallback(
+    event: string, 
+    result: AITaskResult, 
+    taskId: string
+  ): Promise<void> {
+    // 实现事件发射逻辑，例如通过 WebSocket 或事件总线
+    // 这里仅记录日志
+    logger.debug('Event callback emitted', { taskId, event, result: result.status });
+  }
+
+  private getPriorityValue(priority?: string): number {
+    switch (priority) {
+      case 'critical': return 1;
+      case 'high': return 2;
+      case 'normal': return 3;
+      case 'low': return 4;
+      default: return 3;
+    }
+  }
+
+  async close(): Promise<void> {
+    if (this.initialized) {
+      await this.queue.close();
+      this.initialized = false;
+      logger.info('AI queue closed');
+    }
+  }
+}
+——————————————————————————————————————————————
+src/services/ai/document-recommendation.service.ts
+import { BaseAIService } from './base.service';
+import { logger } from '../../config/logger';
+import { AppError } from '../../utils/app-error';
+import { ErrorCode } from '../../constants/error-codes';
+import {
+  ExtractionResult,
+  DocumentComparisonResult,
+  DocumentSummaryResult,
+  DocumentClassificationResult,
+  DocumentQualityAssessment,
+  ExtractionSchema,
+  DocumentProcessingOptions,
+} from './types/document.types';
+import {
+  RecommendationItem,
+  RecommendationContext,
+  UserInteraction,
+  ItemMetadata,
+  RecommendationResult,
+  SimilarItemsRequest,
+  RecommendationEngineConfig,
+} from './types/recommendation.types';
+
+export class DocumentAnalysisService extends BaseAIService {
+  constructor() {
+    super('DocumentAnalysisService');
+  }
+
+  // 从文档提取结构化信息
+  async extractInformation(
+    documentText: string, 
+    schema: ExtractionSchema,
+    options: DocumentProcessingOptions = {}
+  ): Promise<ExtractionResult> {
+    const { 
+      maxDocumentLength = 8000,
+      includeMetadata = true,
+      timeout = 30000,
+    } = options;
+
+    const schemaStr = Object.entries(schema)
+      .map(([key, field]) => `- ${key}: ${field.description} (类型: ${field.type}${field.required ? ', 必需' : ''})`)
+      .join('\n');
+
+    const requiredFields = Object.entries(schema)
+      .filter(([_, field]) => field.required)
+      .map(([key]) => key);
+
+    const requiredStr = requiredFields.length > 0 
+      ? `\n\n必须包含字段: ${requiredFields.join(', ')}`
+      : '';
+
+    const isTruncated = documentText.length > maxDocumentLength;
+    const processedText = documentText.substring(0, maxDocumentLength);
+
+    const prompt = `
+请从以下文档内容中提取结构化信息。严格按照指定的字段和格式要求执行。
+
+文档内容${isTruncated ? '（已截断）' : ''}:
+${processedText}${isTruncated ? '\n\n[文档内容已截断，仅分析前部分内容]' : ''}
+
+提取字段定义:
+${schemaStr}
+${requiredStr}
+
+提取要求:
+1. 只提取明确出现在文档中的信息
+2. 对于不确定的信息，标记为null或空字符串
+3. 保持数据格式的一致性
+4. 不要推断或创造文档中不存在的信息
+5. 对于数字和日期，尽量保持原始格式
+
+请返回JSON格式，包含以下字段:
+- extracted: 包含所有提取字段的对象
+- confidence: 整体提取置信度 (0-1)
+- notes: 任何处理说明或警告
+
+示例:
+{
+  "extracted": {
+    "field1": "value1",
+    "field2": null
+  },
+  "confidence": 0.85,
+  "notes": ["字段X未找到", "字段Y格式需要验证"]
+}
+`;
+
+    const startTime = Date.now();
+
+    try {
+      return await this.withRetry(async () => {
+        const response = await this.openai.chat.completions.create({
+          model: this.defaultModel,
+          messages: [
+            {
+              role: 'system',
+              content: '你是一个精准的信息提取助手。严格基于文档内容提取信息，不进行推断或创造。对于不确定的信息，请明确标记。返回格式必须为有效的JSON。'
+            },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.1,
+          max_tokens: 3000,
+          response_format: { type: 'json_object' },
+        }, { timeout });
+
+        // 记录token使用
+        if (response.usage) {
+          this.trackTokenUsage(this.defaultModel, response.usage, {
+            analysisType: 'document_extraction',
+            documentLength: documentText.length,
+            fieldCount: Object.keys(schema).length,
+            isTruncated,
+          });
+        }
+
+        // 解析响应
+        const content = response.choices[0]?.message?.content || '{}';
+        try {
+          const parsedResponse = JSON.parse(content);
+          const extractedData = parsedResponse.extracted || {};
+          const confidence = parsedResponse.confidence || 0.5;
+          const notes = parsedResponse.notes || [];
+
+          // 验证必需字段
+          const missingFields = requiredFields.filter(
+            field => !extractedData[field] || extractedData[field] === ''
+          );
+
+          const processingTime = Date.now() - startTime;
+
+          // 构建结果
+          const result: ExtractionResult = {
+            success: missingFields.length === 0,
+            data: extractedData,
+            confidence,
+            missingFields,
+            warnings: notes,
+            processedAt: new Date().toISOString(),
+          };
+
+          if (includeMetadata) {
+            result.metadata = {
+              extractionTime: processingTime,
+              documentSize: documentText.length,
+              fieldCoverage: (Object.keys(extractedData).length / Object.keys(schema).length),
+            };
+          }
+
+          logger.info('Document extraction completed', {
+            success: result.success,
+            confidence,
+            extractedFields: Object.keys(extractedData).length,
+            missingFields: missingFields.length,
+            documentLength: documentText.length,
+            processingTime,
+          });
+
+          return result;
+        } catch (error) {
+          logger.error('Failed to parse document extraction response', { 
+            content: content.substring(0, 200),
+            error: error.message 
+          });
+
+          return {
+            success: false,
+            data: {},
+            confidence: 0,
+            missingFields: requiredFields,
+            warnings: ['响应解析失败: ' + error.message],
+            processedAt: new Date().toISOString(),
+          };
+        }
+      }, { context: '文档信息提取' });
+    } catch (error) {
+      logger.error('Document extraction failed', { error: error.message });
+      throw new AppError('文档信息提取失败', 500, ErrorCode.AI_PROCESSING_ERROR);
+    }
+  }
+
+  // 文档相似度比较
+  async compareDocuments(
+    docA: string, 
+    docB: string,
+    options: {
+      maxLengthPerDoc?: number;
+      aspects?: string[];
+      detailedAnalysis?: boolean;
+    } = {}
+  ): Promise<DocumentComparisonResult> {
+    const { 
+      maxLengthPerDoc = 4000, 
+      aspects = ['主题', '结构', '关键信息', '风格'],
+      detailedAnalysis = false
+    } = options;
+
+    const isTruncatedA = docA.length > maxLengthPerDoc;
+    const isTruncatedB = docB.length > maxLengthPerDoc;
+
+    const aspectStr = aspects.map(aspect => `- ${aspect}`).join('\n');
+    const detailedAnalysisStr = detailedAnalysis ? 
+      `\n\n同时分析以下方面的相似度:\n${aspectStr}` : '';
+
+    const prompt = `
+分析以下两个文档的相似度，计算百分比相似度分数（0-100），并列出主要差异。
+
+文档A${isTruncatedA ? '（已截断）' : ''}:
+${docA.substring(0, maxLengthPerDoc)}${isTruncatedA ? '\n\n[文档A内容已截断]' : ''}
+
+文档B${isTruncatedB ? '（已截断）' : ''}:
+${docB.substring(0, maxLengthPerDoc)}${isTruncatedB ? '\n\n[文档B内容已截断]' : ''}
+${detailedAnalysisStr}
+
+请返回JSON格式:
+{
+  "similarityScore": 相似度百分比（0-100之间的数值）,
+  "differences": [主要差异点的数组],
+  ${detailedAnalysis ? `"aspects": {
+    "主题": { "similarity": 相似度分数, "details": "详细说明" },
+    ...
+  },` : ''}
+  "summary": "相似度分析摘要"
+}
+`;
+
+    try {
+      return await this.withRetry(async () => {
+        const response = await this.openai.chat.completions.create({
+          model: this.defaultModel,
+          messages: [
+            {
+              role: 'system',
+              content: '你是一个专业的文档分析专家。请准确评估文档相似度，提供具体的差异分析。'
+            },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.1,
+          max_tokens: 2000,
+          response_format: { type: 'json_object' },
+        });
+
+        // 记录token使用
+        if (response.usage) {
+          this.trackTokenUsage(this.defaultModel, response.usage, {
+            analysisType: 'document_comparison',
+            docALength: docA.length,
+            docBLength: docB.length,
+            detailedAnalysis,
+          });
+        }
+
+        // 解析响应
+        const content = response.choices[0]?.message?.content || '{}';
+        try {
+          const result = JSON.parse(content);
+
+          // 验证和标准化结果
+          const similarityScore = Math.max(0, Math.min(100, Number(result.similarityScore) || 0));
+          const differences = Array.isArray(result.differences) ? result.differences : [];
+          const summary = result.summary || '文档相似度分析完成';
+
+          const finalResult: DocumentComparisonResult = {
+            similarityScore,
+            differences,
+            summary,
+          };
+
+          if (detailedAnalysis && result.aspects) {
+            finalResult.aspects = result.aspects;
+          }
+
+          logger.info('Document comparison completed', {
+            similarityScore,
+            differenceCount: differences.length,
+            docALength: docA.length,
+            docBLength: docB.length,
+          });
+
+          return finalResult;
+        } catch (error) {
+          logger.error('Failed to parse document comparison response', { 
+            content: content.substring(0, 200),
+            error: error.message 
+          });
+
+          return {
+            similarityScore: 0,
+            differences: ['解析响应时出错'],
+            summary: '分析失败',
+          };
+        }
+      }, { context: '文档相似度比较' });
+    } catch (error) {
+      logger.error('Document comparison failed', { error: error.message });
+      throw new AppError('文档比较失败', 500, ErrorCode.AI_PROCESSING_ERROR);
+    }
+  }
+
+  // 文档摘要生成
+  async generateSummary(
+    documentText: string,
+    options: {
+      maxLength?: number;
+      style?: 'concise' | 'detailed' | 'bullet' | 'executive';
+      focusAreas?: string[];
+      includeKeyPoints?: boolean;
+    } = {}
+  ): Promise<DocumentSummaryResult> {
+    const { 
+      maxLength = 200, 
+      style = 'concise',
+      focusAreas = [],
+      includeKeyPoints = true
+    } = options;
+
+    const styleMap = {
+      concise: '简洁明了',
+      detailed: '详细完整',
+      bullet: '要点形式',
+      executive: '执行摘要风格'
+    };
+
+    const focusStr = focusAreas.length > 0 
+      ? `\n重点关注: ${focusAreas.join(', ')}`
+      : '';
+
+    const isTruncated = documentText.length > 8000;
+    const processedText = documentText.substring(0, 8000);
+
+    const prompt = `
+请为以下文档生成摘要。
+
+生成要求:
+- 摘要风格: ${styleMap[style]}
+- 最大长度: ${maxLength} 字
+- ${includeKeyPoints ? '包含3-5个关键要点' : '仅生成摘要文本'}
+${focusStr}
+
+文档内容${isTruncated ? '（已截断）' : ''}:
+${processedText}${isTruncated ? '\n\n[文档内容已截断]' : ''}
+
+请返回JSON格式:
+{
+  "summary": "摘要内容",
+  ${includeKeyPoints ? `"keyPoints": ["要点1", "要点2", ...],` : ''}
+  "length": 摘要字数,
+  "coverage": 文档内容覆盖率估计(0-1)
+}
+`;
+
+    try {
+      return await this.withRetry(async () => {
+        const response = await this.openai.chat.completions.create({
+          model: this.defaultModel,
+          messages: [
+            {
+              role: 'system',
+              content: '你是一个专业的文档总结专家。请生成准确、有用的摘要，避免遗漏重要信息。'
+            },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.3,
+          max_tokens: maxLength * 3, // 为关键点留出空间
+          response_format: { type: 'json_object' },
+        });
+
+        // 记录token使用
+        if (response.usage) {
+          this.trackTokenUsage(this.defaultModel, response.usage, {
+            analysisType: 'document_summary',
+            documentLength: documentText.length,
+            style,
+            includeKeyPoints,
+          });
+        }
+
+        // 解析响应
+        const content = response.choices[0]?.message?.content || '{}';
+        try {
+          const result = JSON.parse(content);
+
+          const summary = result.summary || '';
+          const keyPoints = includeKeyPoints && Array.isArray(result.keyPoints) ? result.keyPoints : undefined;
+          const length = Number(result.length) || summary.length;
+          const coverage = Math.max(0, Math.min(1, Number(result.coverage) || 0.5));
+
+          logger.info('Document summary generated', {
+            summaryLength: length,
+            keyPointsCount: keyPoints?.length || 0,
+            coverage,
+            style,
+          });
+
+          return {
+            summary,
+            keyPoints,
+            length,
+            coverage,
+            style,
+          };
+        } catch (error) {
+          logger.error('Failed to parse summary response', { 
+            content: content.substring(0, 200),
+            error: error.message 
+          });
+
+          // 降级处理：直接使用文本内容
+          const fallbackSummary = content.length > maxLength 
+            ? content.substring(0, maxLength) + '...' 
+            : content;
+
+          return {
+            summary: fallbackSummary,
+            length: fallbackSummary.length,
+            coverage: 0.3,
+            style,
+          };
+        }
+      }, { context: '文档摘要生成' });
+    } catch (error) {
+      logger.error('Document summary generation failed', { error: error.message });
+      throw new AppError('文档摘要生成失败', 500, ErrorCode.AI_PROCESSING_ERROR);
+    }
+  }
+
+  // 文档分类
+  async classifyDocument(
+    documentText: string,
+    categories: string[]
+  ): Promise<DocumentClassificationResult> {
+    const categoriesStr = categories.map(cat => `- ${cat}`).join('\n');
+    const processedText = documentText.substring(0, 6000);
+
+    const prompt = `
+请将以下文档分类到最合适的类别中。
+
+可用类别:
+${categoriesStr}
+
+文档内容:
+${processedText}${documentText.length > 6000 ? '\n\n[文档内容已截断]' : ''}
+
+请返回JSON格式:
+{
+  "primaryCategory": "主要类别",
+  "confidence": 置信度(0-1),
+  "allCategories": [
+    {
+      "category": "类别名称",
+      "confidence": 置信度,
+      "reasoning": "分类理由"
+    },
+    ...
+  ]
+}
+`;
+
+    try {
+      return await this.withRetry(async () => {
+        const response = await this.openai.chat.completions.create({
+          model: this.defaultModel,
+          messages: [
+            {
+              role: 'system',
+              content: '你是一个文档分类专家。请基于文档内容选择最合适的类别，并为每个类别提供置信度和理由。'
+            },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.1,
+          max_tokens: 1500,
+          response_format: { type: 'json_object' },
+        });
+
+        if (response.usage) {
+          this.trackTokenUsage(this.defaultModel, response.usage, {
+            analysisType: 'document_classification',
+            categoryCount: categories.length,
+          });
+        }
+
+        const content = response.choices[0]?.message?.content || '{}';
+        try {
+          const result = JSON.parse(content);
+          return result;
+        } catch (error) {
+          logger.error('Failed to parse classification response', { 
+            content: content.substring(0, 200),
+            error: error.message 
+          });
+          return {
+            primaryCategory: categories[0] || '未知',
+            confidence: 0,
+            allCategories: [],
+          };
+        }
+      }, { context: '文档分类' });
+    } catch (error) {
+      logger.error('Document classification failed', { error: error.message });
+      throw new AppError('文档分类失败', 500, ErrorCode.AI_PROCESSING_ERROR);
+    }
+  }
+
+  // 文档质量评估
+  async assessDocumentQuality(
+    documentText: string
+  ): Promise<DocumentQualityAssessment> {
+    const processedText = documentText.substring(0, 5000);
+
+    const prompt = `
+评估以下文档的质量，从多个维度进行评分并提供改进建议。
+
+文档内容:
+${processedText}${documentText.length > 5000 ? '\n\n[文档内容已截断]' : ''}
+
+请从以下维度评估:
+1. 清晰度 (Clarity): 表达是否清晰易懂
+2. 连贯性 (Coherence): 逻辑是否连贯
+3. 完整性 (Completeness): 信息是否完整
+4. 简洁性 (Conciseness): 表达是否简洁
+5. 准确性 (Accuracy): 信息是否准确
+6. 相关性 (Relevance): 内容是否相关
+
+请返回JSON格式:
+{
+  "score": 总体质量评分(0-1),
+  "aspects": {
+    "clarity": 清晰度评分,
+    "coherence": 连贯性评分,
+    "completeness": 完整性评分,
+    "conciseness": 简洁性评分,
+    "accuracy": 准确性评分,
+    "relevance": 相关性评分
+  },
+  "suggestions": ["改进建议1", "改进建议2"],
+  "overallFeedback": "总体反馈"
+}
+`;
+
+    try {
+      return await this.withRetry(async () => {
+        const response = await this.openai.chat.completions.create({
+          model: this.defaultModel,
+          messages: [
+            {
+              role: 'system',
+              content: '你是一个专业的文档质量评估专家。请从多个维度客观评估文档质量，并提供具体的改进建议。'
+            },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.2,
+          max_tokens: 2000,
+          response_format: { type: 'json_object' },
+        });
+
+        if (response.usage) {
+          this.trackTokenUsage(this.defaultModel, response.usage, {
+            analysisType: 'document_quality_assessment',
+            documentLength: documentText.length,
+          });
+        }
+
+        const content = response.choices[0]?.message?.content || '{}';
+        try {
+          const result = JSON.parse(content);
+          
+          // 添加元数据
+          result.metadata = {
+            assessmentTime: Date.now(),
+            documentComplexity: documentText.length > 1000 ? 'high' : documentText.length > 500 ? 'medium' : 'low',
+          };
+
+          return result;
+        } catch (error) {
+          logger.error('Failed to parse quality assessment response', { 
+            content: content.substring(0, 200),
+            error: error.message 
+          });
+          
+          return {
+            score: 0.5,
+            aspects: {
+              clarity: 0.5,
+              coherence: 0.5,
+              completeness: 0.5,
+              conciseness: 0.5,
+            },
+            suggestions: ['文档质量评估失败'],
+            overallFeedback: '评估过程中出现错误',
+          };
+        }
+      }, { context: '文档质量评估' });
+    } catch (error) {
+      logger.error('Document quality assessment failed', { error: error.message });
+      throw new AppError('文档质量评估失败', 500, ErrorCode.AI_PROCESSING_ERROR);
+    }
+  }
+}
+
+export class RecommendationService extends BaseAIService {
+  private engineConfig: RecommendationEngineConfig;
+
+  constructor() {
+    super('RecommendationService');
+    this.engineConfig = {
+      strategies: [
+        {
+          name: 'content_based',
+          weight: 0.6,
+          description: '基于内容特征的推荐'
+        },
+        {
+          name: 'collaborative',
+          weight: 0.3,
+          description: '基于用户行为的协同过滤'
+        },
+        {
+          name: 'popularity',
+          weight: 0.1,
+          description: '基于流行度的推荐'
+        }
+      ],
+      fallbackStrategy: 'popularity',
+      maxRetries: 3,
+      cacheTtl: 1800, // 30分钟
+      diversityPenalty: 0.2,
+      freshnessBoost: 0.1
+    };
+  }
+
+  // 基于用户历史数据推荐内容
+  async getPersonalizedRecommendations(
+    context: RecommendationContext,
+    userHistory: UserInteraction[],
+    availableItems: ItemMetadata[],
+    count: number = 5
+  ): Promise<RecommendationResult> {
+    const cacheKey = `recommendations:${context.userId}:${JSON.stringify(context)}:${userHistory.length}`;
+
+    return this.withCache(cacheKey, async () => {
+      // 优化: 使用智能预过滤
+      const preFilteredItems = this.preFilterItems(availableItems, userHistory, context.exclusionList || []);
+
+      if (preFilteredItems.length === 0) {
+        logger.warn('No items available after pre-filtering', { userId: context.userId });
+        return {
+          items: [],
+          context,
+          metadata: {
+            generationTime: 0,
+            totalItemsConsidered: 0,
+            algorithm: 'ai_powered',
+          },
+        };
+      }
+
+      const historyText = userHistory
+        .slice(-25)
+        .map(h => `- ${h.itemId} (${h.interactionType}${h.rating ? `, 评分: ${h.rating}` : ''}, ${new Date(h.timestamp).toLocaleDateString('zh-CN')})`)
+        .join('\n');
+
+      const itemsText = preFilteredItems
+        .slice(0, 25)
+        .map(item => `- ${item.id}: ${JSON.stringify(item.metadata)}`)
+        .join('\n');
+
+      const diversityHint = context.diversity !== undefined ? 
+        `\n注意推荐多样性，多样性系数: ${context.diversity}` : '';
+
+      const contextHint = context.currentContext ? 
+        `\n当前上下文: ${context.currentContext}` : '';
+
+      const prompt = `
+基于用户历史行为和偏好，推荐最相关的${count}个项目。
+
+用户ID: ${context.userId}
+${contextHint}
+
+用户历史行为（最近${Math.min(userHistory.length, 25)}条）:
+${historyText}
+
+用户偏好:
+${context.userPreferences ? JSON.stringify(context.userPreferences, null, 2) : '无明确偏好'}
+
+可用项目（已预筛选）:
+${itemsText}
+${diversityHint}
+
+推荐要求:
+1. 为每个推荐项目评分(1-100)，考虑相关性、用户偏好和多样性
+2. 提供具体的推荐理由
+3. 避免推荐用户已经交互过的项目
+4. ${context.exclusionList?.length ? `排除以下项目: ${context.exclusionList.join(', ')}` : ''}
+
+返回JSON格式:
+{
+  "recommendations": [
+    {
+      "id": "项目ID",
+      "score": 推荐评分(1-100),
+      "reason": "具体推荐理由",
+      "metadata": { 可选额外信息 }
+    },
+    ...
+  ]
+}
+`;
+
+      const startTime = Date.now();
+
+      try {
+        return await this.withRetry(async () => {
+          const response = await this.openai.chat.completions.create({
+            model: this.defaultModel,
+            messages: [
+              {
+                role: 'system',
+                content: '你是一个智能推荐系统。基于用户历史和行为模式提供个性化推荐，考虑多样性和新颖性。'
+              },
+              { role: 'user', content: prompt }
+            ],
+            temperature: Math.max(0.1, context.diversity || 0.3),
+            max_tokens: 2000,
+            response_format: { type: 'json_object' },
+          });
+
+          // 记录token使用
+          if (response.usage) {
+            this.trackTokenUsage(this.defaultModel, response.usage, {
+              analysisType: 'personalized_recommendations',
+              userId: context.userId,
+              itemCount: preFilteredItems.length,
+              historyCount: userHistory.length,
+            });
+          }
+
+          // 解析响应
+          const content = response.choices[0]?.message?.content || '{}';
+          try {
+            const result = JSON.parse(content);
+            const recommendations = Array.isArray(result.recommendations) ? result.recommendations : [];
+
+            // 后处理：排序和限制数量
+            const sortedRecommendations = recommendations
+              .sort((a, b) => b.score - a.score)
+              .slice(0, count);
+
+            const generationTime = Date.now() - startTime;
+
+            logger.info('Recommendations generated', {
+              userId: context.userId,
+              recommendationCount: sortedRecommendations.length,
+              topScore: sortedRecommendations[0]?.score || 0,
+              generationTime,
+            });
+
+            return {
+              items: sortedRecommendations,
+              context,
+              metadata: {
+                generationTime,
+                totalItemsConsidered: preFilteredItems.length,
+                algorithm: 'ai_powered',
+                diversityScore: context.diversity,
+              },
+            };
+          } catch (error) {
+            logger.error('Failed to parse recommendations response', { 
+              content: content.substring(0, 200),
+              error: error.message 
+            });
+            return {
+              items: [],
+              context,
+              metadata: {
+                generationTime: Date.now() - startTime,
+                totalItemsConsidered: 0,
+                algorithm: 'ai_powered',
+              },
+            };
+          }
+        }, { context: '个性化推荐' });
+      } catch (error) {
+        logger.error('Recommendation generation failed', { 
+          userId: context.userId, 
+          error: error.message 
+        });
+        throw new AppError('推荐生成失败', 500, ErrorCode.AI_PROCESSING_ERROR);
+      }
+    }, this.engineConfig.cacheTtl);
+  }
+
+  // 相似项目查找
+  async findSimilarItems(
+    request: SimilarItemsRequest
+  ): Promise<RecommendationItem[]> {
+    const { 
+      itemId,
+      itemDetails,
+      candidateItems,
+      options = {}
+    } = request;
+
+    const { 
+      count = 5, 
+      similarityDimensions = ['内容', '风格', '主题', '复杂度'],
+      excludeOriginal = true,
+      minSimilarity = 0
+    } = options;
+
+    const cacheKey = `similar_items:${itemId}:${JSON.stringify(candidateItems.map(i => i.id))}`;
+
+    return this.withCache(cacheKey, async () => {
+      const filteredCandidates = excludeOriginal 
+        ? candidateItems.filter(item => item.id !== itemId)
+        : candidateItems;
+
+      if (filteredCandidates.length === 0) {
+        return [];
+      }
+
+      const candidatesText = filteredCandidates
+        .slice(0, 20)
+        .map(item => `- ${item.id}: ${JSON.stringify(item.details)}`)
+        .join('\n');
+
+      const dimensionsStr = similarityDimensions.map(dim => `- ${dim}`).join('\n');
+
+      const prompt = `
+为给定项目找出${count}个最相似的项目。
+
+目标项目:
+ID: ${itemId}
+详情: ${JSON.stringify(itemDetails)}
+
+候选项目:
+${candidatesText}
+
+相似度评估维度:
+${dimensionsStr}
+
+要求:
+1. 为每个相似项评分(1-100)，考虑多个维度的综合相似度
+2. 简要说明相似原因，可以引用具体维度
+3. 考虑表面特征和深层特征的相似性
+
+返回JSON格式:
+{
+  "similarItems": [
+    {
+      "id": "项目ID",
+      "score": 相似度评分(1-100),
+      "reason": "相似原因，可说明在哪些维度相似"
+    },
+    ...
+  ]
+}
+`;
+
+      try {
+        return await this.withRetry(async () => {
+          const response = await this.openai.chat.completions.create({
+            model: this.defaultModel,
+            messages: [
+              {
+                role: 'system',
+                content: '你是一个相似度分析专家。请从多个维度评估项目相似性，提供准确的相似度评分和理由。'
+              },
+              { role: 'user', content: prompt }
+            ],
+            temperature: 0.1,
+            max_tokens: 1500,
+            response_format: { type: 'json_object' },
+          });
+
+          // 记录token使用
+          if (response.usage) {
+            this.trackTokenUsage(this.defaultModel, response.usage, {
+              analysisType: 'similar_items',
+              targetItem: itemId,
+              candidateCount: filteredCandidates.length,
+            });
+          }
+
+          // 解析响应
+          const content = response.choices[0]?.message?.content || '{}';
+          try {
+            const result = JSON.parse(content);
+            const similarItems = Array.isArray(result.similarItems) ? result.similarItems : [];
+
+            // 排序、过滤和限制数量
+            return similarItems
+              .filter(item => item.score >= minSimilarity)
+              .sort((a, b) => b.score - a.score)
+              .slice(0, count);
+          } catch (error) {
+            logger.error('Failed to parse similar items response', { 
+              content: content.substring(0, 200),
+              error: error.message 
+            });
+            return [];
+          }
+        }, { context: '相似项目查找' });
+      } catch (error) {
+        logger.error('Similar items search failed', { itemId, error: error.message });
+        throw new AppError('相似项目查找失败', 500, ErrorCode.AI_PROCESSING_ERROR);
+      }
+    }, 60 * 60); // 缓存1小时
+  }
+
+  // 基于内容的推荐（无用户历史）
+  async getContentBasedRecommendations(
+    userProfile: { preferences?: any; demographics?: any },
+    availableItems: ItemMetadata[],
+    count: number = 5
+  ): Promise<RecommendationResult> {
+    const itemsText = availableItems
+      .slice(0, 20)
+      .map(item => `- ${item.id}: ${JSON.stringify(item.metadata)}`)
+      .join('\n');
+
+    const prompt = `
+基于用户画像和内容特征，推荐最相关的${count}个项目。
+
+用户画像:
+${JSON.stringify(userProfile, null, 2)}
+
+可用项目:
+${itemsText}
+
+推荐要求:
+1. 基于内容特征与用户画像的匹配度进行推荐
+2. 为每个项目评分(1-100)
+3. 说明推荐理由，重点说明内容特征如何匹配用户画像
+
+返回JSON格式:
+{
+  "recommendations": [
+    {
+      "id": "项目ID",
+      "score": 匹配度评分(1-100),
+      "reason": "推荐理由"
+    },
+    ...
+  ]
+}
+`;
+
+    const startTime = Date.now();
+
+    try {
+      return await this.withRetry(async () => {
+        const response = await this.openai.chat.completions.create({
+          model: this.defaultModel,
+          messages: [
+            {
+              role: 'system',
+              content: '你是一个内容推荐专家。基于用户画像和项目内容的匹配度进行推荐，提供准确的评分和理由。'
+            },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.2,
+          max_tokens: 1500,
+          response_format: { type: 'json_object' },
+        });
+
+        if (response.usage) {
+          this.trackTokenUsage(this.defaultModel, response.usage, {
+            analysisType: 'content_based_recommendations',
+            itemCount: availableItems.length,
+          });
+        }
+
+        const content = response.choices[0]?.message?.content || '{}';
+        try {
+          const result = JSON.parse(content);
+          const recommendations = Array.isArray(result.recommendations) 
+            ? result.recommendations.slice(0, count) 
+            : [];
+
+          return {
+            items: recommendations,
+            context: { userId: 'anonymous' },
+            metadata: {
+              generationTime: Date.now() - startTime,
+              totalItemsConsidered: availableItems.length,
+              algorithm: 'content_based',
+            },
+          };
+        } catch (error) {
+          logger.error('Failed to parse content-based recommendations', { 
+            content: content.substring(0, 200),
+            error: error.message 
+          });
+          return {
+            items: [],
+            context: { userId: 'anonymous' },
+            metadata: {
+              generationTime: Date.now() - startTime,
+              totalItemsConsidered: 0,
+              algorithm: 'content_based',
+            },
+          };
+        }
+      }, { context: '基于内容的推荐' });
+    } catch (error) {
+      logger.error('Content-based recommendations failed', { error: error.message });
+      throw new AppError('基于内容的推荐失败', 500, ErrorCode.AI_PROCESSING_ERROR);
+    }
+  }
+
+  // 更新推荐引擎配置
+  updateEngineConfig(config: Partial<RecommendationEngineConfig>): void {
+    this.engineConfig = { ...this.engineConfig, ...config };
+    logger.info('Recommendation engine config updated', { config });
+  }
+
+  // 获取推荐引擎配置
+  getEngineConfig(): RecommendationEngineConfig {
+    return { ...this.engineConfig };
+  }
+
+  // 辅助方法：智能预过滤
+  private preFilterItems(
+    availableItems: ItemMetadata[],
+    userHistory: UserInteraction[],
+    exclusionList: string[]
+  ): ItemMetadata[] {
+    const interactedIds = new Set(userHistory.map(h => h.itemId));
+    const excludedIds = new Set(exclusionList);
+
+    return availableItems.filter(item => {
+      // 排除已交互和明确排除的项目
+      if (interactedIds.has(item.id) || excludedIds.has(item.id)) {
+        return false;
+      }
+
+      // 可以在这里添加更多预过滤逻辑
+      // 比如基于简单的内容匹配、流行度等
+
+      return true;
+    });
+  }
+}
+
+// 服务管理器
+export class AIServiceManager {
+  private static instance: AIServiceManager;
+  private services: Map<string, any> = new Map();
+
+  static getInstance(): AIServiceManager {
+    if (!AIServiceManager.instance) {
+      AIServiceManager.instance = new AIServiceManager();
+    }
+    return AIServiceManager.instance;
+  }
+
+  initialize(): void {
+    // 初始化所有服务
+    this.services.set('document', new DocumentAnalysisService());
+    this.services.set('recommendation', new RecommendationService());
+    this.services.set('behavior', new UserBehaviorAnalysisService());
+
+    // 初始化队列服务
+    const queueService = AIQueueService.getInstance();
+    queueService.initialize();
+
+    logger.info('AI services initialized successfully');
+  }
+
+  getService<T>(name: string): T {
+    const service = this.services.get(name);
+    if (!service) {
+      throw new AppError(`AI service not found: ${name}`, 500, ErrorCode.SERVICE_UNAVAILABLE);
+    }
+    return service;
+  }
+
+  async shutdown(): Promise<void> {
+    const queueService = AIQueueService.getInstance();
+    await queueService.close();
+    logger.info('AI services shutdown completed');
+  }
+}
+——————————————————————————————————————————————
+src/services/ai/index.ts
+// 统一导出所有 AI 服务
+export * from './base.service';
+export * from './user-behavior.service';
+export * from './queue.service';
+export * from './document-recommendation.service';
+
+// 导出类型
+export * from './types/ai-task.types';
+export * from './types/document.types';
+export * from './types/recommendation.types';
+
+// 默认导出服务管理器
+export { AIServiceManager } from './document-recommendation.service';
+export default AIServiceManager;
+——————————————————————————————————————————————
+### 🔧 核心功能模块
+1. BaseAIService - 提供通用AI功能
+    - 智能缓存机制
+    - 重试策略
+    - 错误处理
+    - Token使用跟踪
+    - 成本估算
+2. UserBehaviorAnalysisService - 用户行为分析
+    - 行为模式识别
+    - 流失风险预测
+    - 用户分群分析
+3. DocumentAnalysisService - 文档处理
+    - 结构化信息提取
+    - 文档相似度比较
+    - 智能摘要生成
+    - 文档分类
+    - 质量评估
+4. RecommendationService - 智能推荐
+    - 个性化推荐
+    - 相似项目查找
+    - 基于内容的推荐
+    - 推荐引擎配置
+5. AIQueueService - 任务队列管理
+    - 异步任务处理
+    - 批量任务支持
+    - 进度跟踪
+    - 回调处理
+### 🚀 使用示例
+——————————————————————————————————————————————
+import AIServiceManager, { 
+  DocumentAnalysisService, 
+  RecommendationService,
+  AIQueueService 
+} from '@/services/ai';
+
+// 初始化服务
+const serviceManager = AIServiceManager.getInstance();
+serviceManager.initialize();
+
+// 使用文档分析服务
+const documentService = serviceManager.getService<DocumentAnalysisService>('document');
+const extractionResult = await documentService.extractInformation(documentText, schema);
+
+// 使用推荐服务
+const recommendationService = serviceManager.getService<RecommendationService>('recommendation');
+const recommendations = await recommendationService.getPersonalizedRecommendations(
+  context, userHistory, availableItems
+);
+
+// 使用队列服务
+const queueService = AIQueueService.getInstance();
+const taskId = await queueService.addTask({
+  id: 'task-1',
+  type: 'document_analysis',
+  data: { documentText, schema }
+});
+——————————————————————————————————————————————
+完整的企业级 AI 服务解决方案，具有高可用性、可扩展性和易维护性。

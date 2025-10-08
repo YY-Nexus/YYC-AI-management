@@ -18,6 +18,19 @@ yarn-error.log*
 
 # env files
 .env*
+!.env.example
+
+# logs
+/logs
+*.log
+
+# uploads
+/uploads
+/temp
+
+# reports
+env-report.json
+audit-report.json
 
 # vercel
 .vercel
@@ -25,3 +38,21 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# IDEs
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+/coverage
+/test-results
+
+# Cache
+.cache/
+.parcel-cache/

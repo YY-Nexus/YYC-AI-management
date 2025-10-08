@@ -1,0 +1,558 @@
+### 移动端优化
+当前问题：
+移动端适配不完善，交互体验差，功能不全，无法满足移动办公需求，响应式布局存在问题，缺乏针对移动端的优化设计。
+改进建议：
+1. 实现完整的移动优先响应式设计
+2. 优化移动端交互体验和触控操作
+3. 实现移动端特有功能和优化
+4. 优化移动端网络性能和资源加载
+5. 添加移动端测试与设备兼容性保障
+技术实现方案：
+——————————————————————————————————————————
+// 1. 移动端响应式布局优化 (components/mobile/responsive-layout.tsx)
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import { useMediaQuery } from '@/hooks/use-media-query';
+
+interface ResponsiveLayoutProps {
+  children: React.ReactNode;
+  mobileBreakpoint?: string;
+  mobileSidebar?: React.ReactNode;
+  sidebarWidth?: string;
+}
+
+export function ResponsiveLayout({
+  children,
+  mobileBreakpoint = '768px',
+  mobileSidebar,
+  sidebarWidth = '280px',
+}: ResponsiveLayoutProps) {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const isMobile = useMediaQuery(`(max-width: ${mobileBreakpoint})`);
+
+  // 关闭侧边栏（点击内容区域时）
+  const closeSidebar = () => {
+    if (isMobile && sidebarOpen) {
+      setSidebarOpen(false);
+    }
+  };
+
+  // 监听窗口尺寸变化
+  useEffect(() => {
+    if (!isMobile) {
+      setSidebarOpen(false);
+    }
+  }, [isMobile]);
+
+  return (
+    <div className="flex h-full w-full overflow-hidden">
+      {/* 移动端抽屉式侧边栏 */}
+      {isMobile && mobileSidebar && (
+        <div
+          className={`fixed inset-0 z-40 transform transition-opacity duration-300 ease-in-out ${
+            sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
+        >
+          <div className="absolute inset-0 bg-gray-800/50" onClick={() => setSidebarOpen(false)} />
+          <div
+            className={`absolute left-0 top-0 bottom-0 flex h-full transform transition-transform duration-300 ease-in-out ${
+              sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+            }`}
+            style={{ width: sidebarWidth }}
+          >
+            {mobileSidebar}
+          </div>
+        </div>
+      )}
+
+      {/* 主内容区域 */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden" onClick={closeSidebar}>
+        {children}
+      </div>
+
+      {/* 移动端底部导航栏 */}
+      {isMobile && (
+        <div className="fixed bottom-0 left-0 right-0 h-16 bg-white border-t z-30 flex items-center justify-around">
+          <button
+            className="flex flex-col items-center justify-center w-1/5 h-full text-sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSidebarOpen(!sidebarOpen);
+            }}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 6h16M4 12h16M4 18h16"
+              />
+            </svg>
+            <span>菜单</span>
+          </button>
+          {/* 其他底部导航按钮 */}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 2. 触控友好组件优化 (components/mobile/touch-friendly-components.tsx)
+'use client';
+
+import React, { useState } from 'react';
+import { motion, PanInfo, useDragControls } from 'framer-motion';
+
+// 滑动操作组件
+interface SwipeActionProps {
+  children: React.ReactNode;
+  onSwipeLeft?: () => void;
+  onSwipeRight?: () => void;
+  leftAction?: React.ReactNode;
+  rightAction?: React.ReactNode;
+  threshold?: number;
+}
+
+export function SwipeAction({
+  children,
+  onSwipeLeft,
+  onSwipeRight,
+  leftAction,
+  rightAction,
+  threshold = 0.4,
+}: SwipeActionProps) {
+  const controls = useDragControls();
+  const [offset, setOffset] = useState(0);
+
+  const handleDragEnd = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    const { offset, velocity } = info;
+    
+    // 计算滑动的百分比
+    const width = (event.currentTarget as HTMLElement).offsetWidth;
+    const percent = offset.x / width;
+    
+    // 如果滑动速度很快或滑动百分比超过阈值，则触发操作
+    if (percent <= -threshold || velocity.x <= -500) {
+      if (onSwipeLeft) {
+        onSwipeLeft();
+      }
+      setOffset(-100); // 左滑显示右侧操作
+      setTimeout(() => setOffset(0), 500);
+    } else if (percent >= threshold || velocity.x >= 500) {
+      if (onSwipeRight) {
+        onSwipeRight();
+      }
+      setOffset(100); // 右滑显示左侧操作
+      setTimeout(() => setOffset(0), 500);
+    } else {
+      setOffset(0); // 恢复原位
+    }
+  };
+
+  return (
+    <div className="relative overflow-hidden touch-none">
+      {/* 左侧操作区域 */}
+      {leftAction && (
+        <div className="absolute top-0 bottom-0 left-0 flex items-center">
+          {leftAction}
+        </div>
+      )}
+      
+      {/* 右侧操作区域 */}
+      {rightAction && (
+        <div className="absolute top-0 bottom-0 right-0 flex items-center">
+          {rightAction}
+        </div>
+      )}
+      
+      {/* 可滑动内容 */}
+      <motion.div
+        drag="x"
+        dragControls={controls}
+        dragConstraints={{ left: 0, right: 0 }}
+        dragElastic={0.1}
+        onDragEnd={handleDragEnd}
+        animate={{ x: offset }}
+        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        className="bg-white z-10 relative"
+      >
+        {children}
+      </motion.div>
+    </div>
+  );
+}
+
+// 触控友好列表项
+export function TouchFriendlyListItem({
+  children,
+  onClick,
+  className = '',
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`p-4 flex items-center min-h-[56px] active:bg-gray-100 transition-colors ${className}`}
+      onClick={onClick}
+    >
+      {children}
+    </div>
+  );
+}
+
+// 底部抽屉组件
+interface BottomSheetProps {
+  isOpen: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+  snapPoints?: string[];
+  initialSnap?: number;
+}
+
+export function BottomSheet({
+  isOpen,
+  onClose,
+  children,
+  snapPoints = ['25%', '50%', '90%'],
+  initialSnap = 0,
+}: BottomSheetProps) {
+  const [currentSnap, setCurrentSnap] = useState(initialSnap);
+  const controls = useDragControls();
+
+  // 处理拖拽结束
+  const handleDragEnd = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    const { offset, velocity } = info;
+    
+    // 向下滑动速度较快或偏移量较大时关闭
+    if (velocity.y > 500 || offset.y > 100) {
+      onClose();
+      return;
+    }
+    
+    // 计算最接近的快照点
+    const currentHeight = window.innerHeight * (parseFloat(snapPoints[currentSnap]) / 100);
+    const newHeight = currentHeight - offset.y;
+    const newPercent = (newHeight / window.innerHeight) * 100;
+    
+    let closestSnap = 0;
+    let minDiff = Number.MAX_VALUE;
+    
+    snapPoints.forEach((point, index) => {
+      const diff = Math.abs(parseFloat(point) - newPercent);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestSnap = index;
+      }
+    });
+    
+    setCurrentSnap(closestSnap);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50">
+      {/* 背景遮罩 */}
+      <div
+        className="absolute inset-0 bg-black/50 transition-opacity duration-300"
+        onClick={onClose}
+      />
+      
+      {/* 抽屉内容 */}
+      <motion.div
+        initial={{ y: '100%' }}
+        animate={{ 
+          y: `${100 - parseFloat(snapPoints[currentSnap])}%`,
+          transition: { type: 'spring', stiffness: 300, damping: 30 }
+        }}
+        className="absolute bottom-0 left-0 right-0 bg-white rounded-t-xl max-h-[90%] overflow-hidden flex flex-col"
+      >
+        {/* 拖动把手 */}
+        <div
+          className="flex justify-center py-2"
+          onPointerDown={(e) => controls.start(e)}
+        >
+          <div className="w-10 h-1 rounded-full bg-gray-300" />
+        </div>
+        
+        {/* 内容区域 */}
+        <motion.div
+          drag="y"
+          dragControls={controls}
+          dragConstraints={{ top: 0, bottom: 0 }}
+          dragElastic={0.2}
+          onDragEnd={handleDragEnd}
+          className="flex-1 overflow-auto"
+        >
+          <div className="px-4 pb-4">
+            {children}
+          </div>
+        </motion.div>
+      </motion.div>
+    </div>
+  );
+}
+
+// 3. 移动端图片优化 (components/mobile/optimized-image.tsx)
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
+import { useMediaQuery } from '@/hooks/use-media-query';
+import { useSafeArea } from '@/hooks/use-safe-area';
+
+interface OptimizedImageProps {
+  src: string;
+  alt: string;
+  width?: number;
+  height?: number;
+  sizes?: string;
+  priority?: boolean;
+  className?: string;
+  objectFit?: 'contain' | 'cover' | 'fill' | 'none' | 'scale-down';
+  onLoad?: () => void;
+}
+
+export function OptimizedImage({
+  src,
+  alt,
+  width,
+  height,
+  sizes = '(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw',
+  priority = false,
+  className = '',
+  objectFit = 'cover',
+  onLoad,
+}: OptimizedImageProps) {
+  const [isLoading, setIsLoading] = useState(true);
+  const isMobile = useMediaQuery('(max-width: 640px)');
+  const safeArea = useSafeArea();
+  
+  // 低质量占位符URL
+  const lqip = `${src}?w=20&q=10`;
+  
+  // 计算实际图片尺寸
+  const getImageDimensions = () => {
+    if (width && height) {
+      return { width, height };
+    }
+    
+    // 默认尺寸
+    return { width: 1200, height: 800 };
+  };
+  
+  const { width: imgWidth, height: imgHeight } = getImageDimensions();
+  
+  // 自动调整移动端图片尺寸
+  useEffect(() => {
+    if (isMobile) {
+      // 在移动设备上可以调整加载尺寸
+    }
+  }, [isMobile]);
+  
+  return (
+    <div
+      className={`relative overflow-hidden ${className}`}
+      style={{ 
+        paddingBottom: `${(imgHeight / imgWidth) * 100}%`,
+        ...safeArea // 添加安全区域边距
+      }}
+    >
+      {isLoading && (
+        <div className="absolute inset-0 bg-gray-100 animate-pulse" />
+      )}
+      <Image
+        src={src || "/placeholder.svg"}
+        alt={alt}
+        width={imgWidth}
+        height={imgHeight}
+        sizes={sizes}
+        priority={priority}
+        quality={isMobile ? 80 : 90}
+        placeholder="blur"
+        blurDataURL={lqip}
+        className={`absolute inset-0 w-full h-full transition-opacity duration-300 ${
+          isLoading ? 'opacity-0' : 'opacity-100'
+        }`}
+        style={{ objectFit }}
+        onLoad={() => {
+          setIsLoading(false);
+          onLoad?.();
+        }}
+        loading={priority ? 'eager' : 'lazy'}
+      />
+    </div>
+  );
+}
+
+// 4. 移动端网络性能优化 (app/layout-mobile-optimized.tsx)
+import { Suspense } from 'react';
+import { Viewport } from 'next';
+import { IsMobileProvider } from '@/components/providers/mobile-provider';
+import { NetworkStatusProvider } from '@/components/providers/network-status-provider';
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1, // 防止iOS上缩放导致的双击问题
+  userScalable: false, // 禁用缩放提升触摸体验
+  themeColor: '#ffffff',
+  viewportFit: 'cover', // 适配iPhone X及以上的安全区域
+};
+
+// 移动端优化布局
+export default function MobileOptimizedLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="zh-CN">
+      <head>
+        {/* 添加预连接和预获取指令 */}
+        <link rel="preconnect" href="https://cdn.yanyu.cloud" />
+        <link rel="dns-prefetch" href="https://cdn.yanyu.cloud" />
+        <link rel="preconnect" href="https://api.yanyu.cloud" />
+        <link rel="dns-prefetch" href="https://api.yanyu.cloud" />
+        
+        {/* iOS状态栏样式 */}
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        
+        {/* 添加到主屏幕的图标 */}
+        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+        
+        {/* PWA配置 */}
+        <link rel="manifest" href="/manifest.json" />
+      </head>
+      <body>
+        <IsMobileProvider>
+          <NetworkStatusProvider>
+            {/* 移动端优化内容加载 */}
+            <Suspense fallback={<div className="mobile-loading-skeleton" />}>
+              {children}
+            </Suspense>
+          </NetworkStatusProvider>
+        </IsMobileProvider>
+      </body>
+    </html>
+  );
+}
+
+// 5. 移动端网络状态监控 (components/providers/network-status-provider.tsx)
+'use client';
+
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { toast } from 'sonner';
+
+interface NetworkStatusContextType {
+  isOnline: boolean;
+  isSlow: boolean;
+  effectiveType: string;
+  rtt: number;
+}
+
+const NetworkStatusContext = createContext<NetworkStatusContextType>({
+  isOnline: true,
+  isSlow: false,
+  effectiveType: 'unknown',
+  rtt: 0,
+});
+
+export const useNetworkStatus = () => useContext(NetworkStatusContext);
+
+export function NetworkStatusProvider({ children }: { children: React.ReactNode }) {
+  const [isOnline, setIsOnline] = useState(true);
+  const [isSlow, setIsSlow] = useState(false);
+  const [effectiveType, setEffectiveType] = useState('unknown');
+  const [rtt, setRtt] = useState(0);
+  
+  useEffect(() => {
+    // 监听在线状态
+    const handleOnline = () => {
+      setIsOnline(true);
+      toast.success('网络已连接');
+    };
+    
+    const handleOffline = () => {
+      setIsOnline(false);
+      toast.error('网络已断开');
+    };
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    // 初始化在线状态
+    setIsOnline(navigator.onLine);
+    
+    // 监听网络质量变化
+    if ('connection' in navigator) {
+      const connection = (navigator as any).connection;
+      
+      const handleChange = () => {
+        setEffectiveType(connection.effectiveType);
+        setRtt(connection.rtt);
+        
+        // 检测慢网络
+        const isSlow = 
+          connection.effectiveType === 'slow-2g' || 
+          connection.effectiveType === '2g' || 
+          connection.rtt > 500;
+        
+        setIsSlow(isSlow);
+        
+        if (isSlow) {
+          toast.warning('网络速度较慢，请耐心等待');
+        }
+      };
+      
+      connection.addEventListener('change', handleChange);
+      handleChange(); // 初始化
+      
+      return () => {
+        connection.removeEventListener('change', handleChange);
+      };
+    }
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+  
+  return (
+    <NetworkStatusContext.Provider value={{ isOnline, isSlow, effectiveType, rtt }}>
+      {children}
+      
+      {/* 离线提示 */}
+      {!isOnline && (
+        <div className="fixed bottom-0 left-0 right-0 bg-red-500 text-white p-2 text-center z-50">
+          您当前处于离线状态，部分功能可能不可用
+        </div>
+      )}
+      
+      {/* 慢网络提示 */}
+      {isOnline && isSlow && (
+        <div className="fixed bottom-0 left-0 right-0 bg-yellow-500 text-white p-2 text-center z-50">
+          当前网络较慢，请耐心等待
+        </div>
+      )}
+    </NetworkStatusContext.Provider>
+  );
+}
+——————————————————————————————————————————
+预期影响：
+- 移动端用户体验显著提升
+- 提高移动用户留存率和活跃度
+- 扩大系统可访问性，支持随时随地办公
+- 减少移动端加载时间，提高响应速度
+- 优化移动端资源消耗，降低用户流量占用

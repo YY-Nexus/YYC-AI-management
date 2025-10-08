@@ -74,6 +74,7 @@ subscribe(['role:admin', 'department:tech'])
 }, [])
 
 return (
+
 <div>
 {isConnected ? '已连接' : '未连接'}
 {notifications.map(n => (
