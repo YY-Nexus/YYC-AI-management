@@ -13,7 +13,7 @@
 [![Redis](https://img.shields.io/badge/Redis-7.x-red?logo=redis)](https://redis.io/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[功能特性](#-功能特性) • [快速开始](#-快速开始) • [技术栈](#-技术栈) • [API 文档](#-api-接口文档) • [部署指南](#-部署指南)
+[功能特性](#-功能特性) • [快速开始](#-快速开始) • [技术栈](#-技术栈) • [API 文档](#-api-接口文档) • [部署指南](#-部署指南) • [安全策略](#-安全策略)
 
 ---
 
@@ -29,6 +29,7 @@
 - [模块说明](#-模块说明)
 - [测试指南](#-测试指南)
 - [部署指南](#-部署指南)
+- [安全策略](#-安全策略)
 - [许可证](#-许可证)
 
 ---
@@ -43,7 +44,7 @@ YanYu Cloud³ 是一个现代化的企业级智能业务管理系统，集成了
 - 🤖 **AI 驱动**：GPT-4 智能异常分析，自动化问题诊断
 - 🔄 **实时通信**：WebSocket 实时通知，秒级数据同步
 - 📊 **可视化**：丰富的数据看板，Storybook 组件库
-- 🔒 **安全可靠**：RBAC 权限控制，JWT 认证，数据加密
+- 🔒 **安全可靠**：RBAC 权限控制，JWT 认证，数据加密，遵循[安全策略](SECURITY.md)
 - 📈 **可观测性**：Prometheus 监控，完整的日志追踪
 
 ---
@@ -2011,6 +2012,26 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+---
+
+## 🔒 安全策略
+
+YanYu Cloud³ 高度重视系统安全。我们制定了全面的安全策略，包括漏洞报告流程、支持的版本、安全最佳实践等内容。
+
+### 安全特性
+
+- **多层安全架构**：应用层安全、认证授权、API安全、数据安全、基础设施安全
+- **严格的访问控制**：基于角色的访问控制（RBAC）、细粒度权限管理
+- **数据保护**：敏感数据加密存储、HTTPS传输加密、数据脱敏
+- **安全监控与审计**：完整的安全事件日志、异常行为检测
+- **合规性**：遵循GDPR、SOC 2、ISO 27001等安全标准
+
+### 漏洞报告
+
+如果您发现任何安全漏洞，请通过电子邮件 [security@yanyu-ai.com](mailto:security@yanyu-ai.com) 报告。我们承诺在24小时内确认收到您的报告，并在72小时内提供初步评估。
+
+详情请参阅完整的 [安全策略文档](SECURITY.md)。
 
 ---
 
