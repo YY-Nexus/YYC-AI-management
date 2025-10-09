@@ -429,7 +429,7 @@ export class AuthService {
   // 生成访问令牌
   static generateAccessToken(payload: TokenPayload): string {
     // 由于已在文件顶部验证过环境变量，这里使用非空断言
-    return jwt.sign(payload, JWT_SECRET!, {
+    return jwt.sign(payload as object, JWT_SECRET! as string, {
       expiresIn: ACCESS_TOKEN_EXPIRY,
     });
   }
@@ -437,7 +437,7 @@ export class AuthService {
   // 生成刷新令牌
   static generateRefreshToken(payload: TokenPayload): string {
     // 由于已在文件顶部验证过环境变量，这里使用非空断言
-    return jwt.sign(payload, JWT_REFRESH_SECRET!, {
+    return jwt.sign(payload as object, JWT_REFRESH_SECRET! as string, {
       expiresIn: REFRESH_TOKEN_EXPIRY,
     });
   }
