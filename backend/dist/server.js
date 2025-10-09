@@ -30,8 +30,48 @@ exports.httpServer = httpServer;
 const PORT = process.env.PORT || 3001;
 // Middleware
 app.use((0, helmet_1.default)());
+// CORS 配置 - 支持多域名和 Vercel
+const getCorsOrigin = () => {
+    const origins = [];
+    // 从环境变量获取前端 URL
+    if (process.env.FRONTEND_BASE_URL) {
+        origins.push(process.env.FRONTEND_BASE_URL);
+    }
+    // 添加允许的域名列表
+    if (process.env.ALLOWED_ORIGINS) {
+        origins.push(...process.env.ALLOWED_ORIGINS.split(','));
+    }
+    // 生产环境支持 Vercel 域名
+    if (process.env.NODE_ENV === "production") {
+        origins.push(/\.vercel\.app$/);
+    }
+    // 开发环境默认值
+    if (origins.length === 0) {
+        origins.push("http://localhost:3000");
+    }
+    return origins;
+};
 app.use((0, cors_1.default)({
-    origin: process.env.FRONTEND_BASE_URL || "http://localhost:3000",
+    origin: (origin, callback) => {
+        const allowedOrigins = getCorsOrigin();
+        // 允许没有 origin 的请求
+        if (!origin) {
+            return callback(null, true);
+        }
+        // 检查是否允许
+        const isAllowed = allowedOrigins.some(allowed => {
+            if (typeof allowed === 'string') {
+                return allowed === origin;
+            }
+            return allowed.test(origin);
+        });
+        if (isAllowed) {
+            callback(null, true);
+        }
+        else {
+            callback(null, false);
+        }
+    },
     credentials: true,
 }));
 app.use(express_1.default.json({ limit: "10mb" }));
