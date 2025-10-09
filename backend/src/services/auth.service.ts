@@ -7,11 +7,17 @@ import { redis } from '../config/redis';
 import { logger } from '../config/logger';
 import { AppError } from '../utils/app-error';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key';
-const ACCESS_TOKEN_EXPIRY = '15m';
-const REFRESH_TOKEN_EXPIRY = '7d';
-const SALT_ROUNDS = 10;
+// 从环境变量获取密钥，不提供默认值以确保安全
+const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
+const ACCESS_TOKEN_EXPIRY = process.env.JWT_EXPIRES_IN || '15m';
+const REFRESH_TOKEN_EXPIRY = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
+const SALT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || '10');
+
+// 验证必要的环境变量是否存在
+if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
+  throw new Error('JWT secrets are not configured in environment variables');
+}
 
 interface TokenPayload {
   userId: string;
