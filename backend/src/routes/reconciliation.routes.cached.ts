@@ -3,7 +3,7 @@ import type { Request, Response, NextFunction } from "express"
 import { cachedReconciliationService } from "../services/reconciliation.service.cached"
 import { cacheMiddleware, invalidateCacheMiddleware } from "../middleware/cache.middleware"
 import { validateRequest } from "../middleware/validation.middleware"
-import { authMiddleware, checkPermission } from "../middleware/auth.middleware"
+import { authenticate as authMiddleware, authorize as checkPermission } from "../middleware/auth.middleware"
 import Joi from "joi"
 
 const router = Router()
@@ -29,7 +29,7 @@ router.use(authMiddleware)
  */
 router.get(
   "/",
-  checkPermission("reconciliation:read"),
+  checkPermission(["reconciliation:read"]),
   validateRequest(reconciliationFiltersSchema, "query"),
   cacheMiddleware({
     ttl: 300, // 5分钟
@@ -49,7 +49,7 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const filters = req.query as any
-      const result = await cachedReconciliationService.getReconciliationRecords(filters)
+      const result = await cachedReconciliationService.getRecords(filters)
 
       res.json({
         success: true,
@@ -74,7 +74,7 @@ router.get(
  */
 router.get(
   "/stats",
-  checkPermission("reconciliation:read"),
+  checkPermission(["reconciliation:read"]),
   cacheMiddleware({
     ttl: 60, // 1分钟
     prefix: "reconciliation",
@@ -102,7 +102,7 @@ router.get(
  */
 router.get(
   "/:id",
-  checkPermission("reconciliation:read"),
+  checkPermission(["reconciliation:read"]),
   cacheMiddleware({
     ttl: 300,
     prefix: "reconciliation",
@@ -110,7 +110,7 @@ router.get(
   }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const record = await cachedReconciliationService.getReconciliationById(req.params.id)
+      const record = await cachedReconciliationService.getRecordById(req.params.id)
 
       if (!record) {
         return res.status(404).json({
@@ -136,14 +136,14 @@ router.get(
  */
 router.post(
   "/",
-  checkPermission("reconciliation:write"),
+  checkPermission(["reconciliation:write"]),
   invalidateCacheMiddleware({
     patterns: ["list:*", "stats:*"],
     prefix: "reconciliation",
   }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const record = await cachedReconciliationService.createReconciliationRecord(req.body)
+      const record = await cachedReconciliationService.createRecord(req.body)
 
       res.status(201).json({
         success: true,
@@ -162,14 +162,15 @@ router.post(
  */
 router.put(
   "/:id",
-  checkPermission("reconciliation:write"),
+  checkPermission(["reconciliation:write"]),
   invalidateCacheMiddleware({
     patterns: (req) => [`record:${req.params.id}`, "list:*", "stats:*"],
     prefix: "reconciliation",
   }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const record = await cachedReconciliationService.updateReconciliationRecord(req.params.id, req.body)
+      const userId = (req as any).user?.userId
+      const record = await cachedReconciliationService.updateRecord(req.params.id, req.body, userId)
 
       if (!record) {
         return res.status(404).json({
@@ -195,7 +196,7 @@ router.put(
  */
 router.post(
   "/match",
-  checkPermission("reconciliation:reconcile"),
+  checkPermission(["reconciliation:reconcile"]),
   invalidateCacheMiddleware({
     patterns: ["*"],
     prefix: "reconciliation",
@@ -221,7 +222,7 @@ router.post(
  */
 router.post(
   "/:id/resolve",
-  checkPermission("reconciliation:resolve"),
+  checkPermission(["reconciliation:resolve"]),
   invalidateCacheMiddleware({
     patterns: (req) => [`record:${req.params.id}`, "list:*", "stats:*"],
     prefix: "reconciliation",

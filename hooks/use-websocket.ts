@@ -45,7 +45,14 @@ export function useWebSocket(options: UseWebSocketOptions = {}): WebSocketHookRe
   // 获取认证 token
   const getAuthToken = useCallback((): string | null => {
     if (typeof window !== "undefined") {
-      return localStorage.getItem("auth_token") || sessionStorage.getItem("auth_token")
+      // 优先从 HttpOnly Cookie 中获取（需要服务端支持）
+      // 当前实现：从存储中获取并验证 token 格式
+      const token = localStorage.getItem("auth_token") || sessionStorage.getItem("auth_token")
+      
+      // 验证 token 格式，确保它是有效的 JWT 格式
+      if (token && /^[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*$/.test(token)) {
+        return token;
+      }
     }
     return null
   }, [])

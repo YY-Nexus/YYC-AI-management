@@ -585,7 +585,7 @@ export class WorkflowEngineService extends EventEmitter {
       await this.progressWorkflow(
         instance.id,
         node.id,
-        { webhookError: error.message },
+        { webhookError: (error as Error).message },
         actor
       );
     }
@@ -615,7 +615,7 @@ export class WorkflowEngineService extends EventEmitter {
       await this.progressWorkflow(
         instance.id,
         node.id,
-        { scriptError: error.message },
+        { scriptError: (error as Error).message },
         actor
       );
     }

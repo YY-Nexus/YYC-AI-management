@@ -291,7 +291,7 @@ const mockContainers: DevContainer[] = [
     status: "running",
     ports: [8080],
     volumes: ["/workspace:/home/coder/workspace"],
-    environment: { PASSWORD: "secure123", SUDO_PASSWORD: "secure123" },
+    environment: { PASSWORD: process.env.DEV_ENV_PASSWORD || "", SUDO_PASSWORD: process.env.DEV_ENV_SUDO_PASSWORD || "" },
     resources: { cpuLimit: "2", memoryLimit: "8Gi", gpuAccess: false },
     createdAt: "2024-01-18 14:30:00",
     uptime: "3天 2小时",
@@ -709,11 +709,11 @@ export function DevelopmentEnvironment() {
         if (container.id === containerId) {
           switch (action) {
             case "start":
-              return { ...container, status: "starting" }
+              return { ...container, status: "building" as const }
             case "stop":
-              return { ...container, status: "stopping" }
+              return { ...container, status: "stopped" as const }
             case "restart":
-              return { ...container, status: container.status === "running" ? "stopping" : "starting" }
+              return { ...container, status: container.status === "running" ? "stopped" : "building" as const }
             default:
               return container
           }
@@ -846,7 +846,7 @@ export function DevelopmentEnvironment() {
       {/* 开发环境概览 */}
       <AnimatedContainer animation="fadeIn">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <EnhancedCard variant="modern" glowEffect>
+          <EnhancedCard variant="default" glowEffect>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">运行环境</CardTitle>
             </CardHeader>
@@ -861,7 +861,7 @@ export function DevelopmentEnvironment() {
             </CardContent>
           </EnhancedCard>
 
-          <EnhancedCard variant="modern" glowEffect>
+          <EnhancedCard variant="default" glowEffect>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">代码仓库</CardTitle>
             </CardHeader>
@@ -876,7 +876,7 @@ export function DevelopmentEnvironment() {
             </CardContent>
           </EnhancedCard>
 
-          <EnhancedCard variant="modern" glowEffect>
+          <EnhancedCard variant="default" glowEffect>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">容器实例</CardTitle>
             </CardHeader>
@@ -891,7 +891,7 @@ export function DevelopmentEnvironment() {
             </CardContent>
           </EnhancedCard>
 
-          <EnhancedCard variant="modern" glowEffect>
+          <EnhancedCard variant="default" glowEffect>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">开发工具</CardTitle>
             </CardHeader>
@@ -939,7 +939,7 @@ export function DevelopmentEnvironment() {
                 </div>
                 <Dialog open={isCreateEnvOpen} onOpenChange={setIsCreateEnvOpen}>
                   <DialogTrigger asChild>
-                    <EnhancedButton variant="primary" soundType="click">
+                    <EnhancedButton variant="primary">
                       <Plus className="w-4 h-4 mr-2" />
                       创建环境
                     </EnhancedButton>
@@ -1093,7 +1093,7 @@ export function DevelopmentEnvironment() {
             <div className="grid grid-cols-1 gap-4">
               {filteredEnvironments.length > 0 ? (
                 filteredEnvironments.map((env) => (
-                  <EnhancedCard key={env.id} variant="bordered" className="overflow-hidden">
+                  <EnhancedCard key={env.id} variant="default" className="overflow-hidden">
                     <div className="p-4">
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
@@ -1209,7 +1209,7 @@ export function DevelopmentEnvironment() {
                   </EnhancedCard>
                 ))
               ) : (
-                <EnhancedCard variant="bordered" className="p-8 text-center">
+                <EnhancedCard variant="default" className="p-8 text-center">
                   <div className="flex flex-col items-center justify-center text-muted-foreground">
                     <Terminal className="w-12 h-12 mb-2 opacity-50" />
                     <h3 className="text-lg font-medium mb-1">未找到环境</h3>
@@ -1241,7 +1241,7 @@ export function DevelopmentEnvironment() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </div>
-                <EnhancedButton variant="primary" soundType="click">
+                <EnhancedButton variant="primary">
                   <Plus className="w-4 h-4 mr-2" />
                   添加仓库
                 </EnhancedButton>
@@ -1251,7 +1251,7 @@ export function DevelopmentEnvironment() {
             <div className="grid grid-cols-1 gap-4">
               {filteredRepositories.length > 0 ? (
                 filteredRepositories.map((repo) => (
-                  <EnhancedCard key={repo.id} variant="bordered" className="overflow-hidden">
+                  <EnhancedCard key={repo.id} variant="default" className="overflow-hidden">
                     <div className="p-4">
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
@@ -1332,7 +1332,7 @@ export function DevelopmentEnvironment() {
                   </EnhancedCard>
                 ))
               ) : (
-                <EnhancedCard variant="bordered" className="p-8 text-center">
+                <EnhancedCard variant="default" className="p-8 text-center">
                   <div className="flex flex-col items-center justify-center text-muted-foreground">
                     <GitBranch className="w-12 h-12 mb-2 opacity-50" />
                     <h3 className="text-lg font-medium mb-1">未找到仓库</h3>
@@ -1364,7 +1364,7 @@ export function DevelopmentEnvironment() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </div>
-                <EnhancedButton variant="primary" soundType="click">
+                <EnhancedButton variant="primary">
                   <Plus className="w-4 h-4 mr-2" />
                   新建容器
                 </EnhancedButton>
@@ -1374,7 +1374,7 @@ export function DevelopmentEnvironment() {
             <div className="grid grid-cols-1 gap-4">
               {filteredContainers.length > 0 ? (
                 filteredContainers.map((container) => (
-                  <EnhancedCard key={container.id} variant="bordered" className="overflow-hidden">
+                  <EnhancedCard key={container.id} variant="default" className="overflow-hidden">
                     <div className="p-4">
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
@@ -1469,7 +1469,7 @@ export function DevelopmentEnvironment() {
 
                       <div className="mt-4">
                         <div className="text-xs text-muted-foreground mb-1">最近日志</div>
-                        <ScrollArea className="h-20 rounded-md border p-3 text-sm bg-muted/30 text-muted-foreground text-xs">
+                        <ScrollArea className="h-20 rounded-md border p-3 bg-muted/30 text-muted-foreground text-xs">
                           {container.logs.map((log, idx) => (
                             <div key={idx} className="mb-1 last:mb-0">
                               {log}
@@ -1481,7 +1481,7 @@ export function DevelopmentEnvironment() {
                   </EnhancedCard>
                 ))
               ) : (
-                <EnhancedCard variant="bordered" className="p-8 text-center">
+                <EnhancedCard variant="default" className="p-8 text-center">
                   <div className="flex flex-col items-center justify-center text-muted-foreground">
                     <Docker className="w-12 h-12 mb-2 opacity-50" />
                     <h3 className="text-lg font-medium mb-1">未找到容器</h3>
@@ -1533,7 +1533,7 @@ export function DevelopmentEnvironment() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {filteredTools.length > 0 ? (
                 filteredTools.map((tool) => (
-                  <EnhancedCard key={tool.id} variant="bordered" className="overflow-hidden">
+                  <EnhancedCard key={tool.id} variant="default" className="overflow-hidden">
                     <div className="p-4">
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
@@ -1557,7 +1557,7 @@ export function DevelopmentEnvironment() {
                               更新
                             </Button>
                           ) : (
-                            <Button variant="primary" size="sm" onClick={() => handleToolAction(tool.id, "install")}>
+                            <Button variant="default" size="sm" onClick={() => handleToolAction(tool.id, "install")}>
                               <Download className="w-4 h-4 mr-1" />
                               安装
                             </Button>
@@ -1598,7 +1598,7 @@ export function DevelopmentEnvironment() {
                   </EnhancedCard>
                 ))
               ) : (
-                <EnhancedCard variant="bordered" className="p-8 text-center md:col-span-2">
+                <EnhancedCard variant="default" className="p-8 text-center md:col-span-2">
                   <div className="flex flex-col items-center justify-center text-muted-foreground">
                     <Package className="w-12 h-12 mb-2 opacity-50" />
                     <h3 className="text-lg font-medium mb-1">未找到工具</h3>
@@ -1639,7 +1639,7 @@ export function DevelopmentEnvironment() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <EnhancedCard variant="bordered">
+              <EnhancedCard variant="default">
                 <CardHeader>
                   <CardTitle className="text-base">CPU 使用率</CardTitle>
                 </CardHeader>
@@ -1664,7 +1664,7 @@ export function DevelopmentEnvironment() {
                 </CardContent>
               </EnhancedCard>
 
-              <EnhancedCard variant="bordered">
+              <EnhancedCard variant="default">
                 <CardHeader>
                   <CardTitle className="text-base">内存使用率</CardTitle>
                 </CardHeader>
@@ -1689,7 +1689,7 @@ export function DevelopmentEnvironment() {
                 </CardContent>
               </EnhancedCard>
 
-              <EnhancedCard variant="bordered">
+              <EnhancedCard variant="default">
                 <CardHeader>
                   <CardTitle className="text-base">存储使用率</CardTitle>
                 </CardHeader>
@@ -1714,7 +1714,7 @@ export function DevelopmentEnvironment() {
                 </CardContent>
               </EnhancedCard>
 
-              <EnhancedCard variant="bordered">
+              <EnhancedCard variant="default">
                 <CardHeader>
                   <CardTitle className="text-base">GPU 使用率</CardTitle>
                 </CardHeader>
@@ -1740,7 +1740,7 @@ export function DevelopmentEnvironment() {
               </EnhancedCard>
             </div>
 
-            <EnhancedCard variant="bordered">
+            <EnhancedCard variant="default">
               <CardHeader>
                 <CardTitle className="text-base">环境资源分布</CardTitle>
               </CardHeader>

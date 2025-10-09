@@ -1,4 +1,4 @@
-import ApprovalTasks from "@/components/workflow/approval-tasks";
+import { ApprovalTasks } from '@/components/workflow/approval-tasks';
 
 export default function WorkflowTasksPage() {
   return (

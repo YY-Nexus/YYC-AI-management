@@ -43,6 +43,7 @@ export interface NotificationPayload {
   actionUrl?: string
   actionLabel?: string
   data?: Record<string, any>
+  userId?: string
 }
 
 export interface TicketUpdatePayload {

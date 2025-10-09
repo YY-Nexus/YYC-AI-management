@@ -1,11 +1,5 @@
 const request = require("supertest");
-const {
-  describe,
-  beforeAll,
-  afterAll,
-  test,
-  expect,
-} = require("@jest/globals");
+
 
 // 模拟Express应用
 const express = require("express");

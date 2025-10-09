@@ -1,77 +1,181 @@
-import type { Request, Response, NextFunction } from "express"
-import { logger } from "../config/logger"
+import { Request, Response, NextFunction } from 'express';
+import { AuthService } from '../services/auth.service';
+import { AppError } from '../utils/app-error';
+import { logger } from '../config/logger';
+import { ErrorCode } from '../constants/error-codes';
 
-// 模拟用户认证（实际应集成真实的认证服务）
-export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
+interface UserPayload {
+  userId: string;
+  email: string;
+  roles: string[];
+}
+
+declare global {
+  namespace Express {
+    interface Request {
+      user?: UserPayload;
+    }
+  }
+}
+
+/**
+ * 认证中间件 - 验证访问令牌
+ */
+export const authenticate = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
   try {
-    const authHeader = req.headers.authorization
-
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({
-        success: false,
-        error: "Missing or invalid authorization header",
-      })
+    // 从请求头中获取令牌
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      throw AppError.unauthorized('Authorization header is required', ErrorCode.UNAUTHORIZED);
     }
 
-    const token = authHeader.substring(7)
-
-    // 实际应该验证 JWT token
-    // const decoded = jwt.verify(token, process.env.JWT_SECRET)
-
-    // 模拟用户信息
-    const user = {
-      id: "11111111-1111-1111-1111-111111111111",
-      name: "Admin User",
-      email: "admin@yanyu.com",
-      role: "admin",
-      permissions: [
-        "reconciliation:read",
-        "reconciliation:write",
-        "reconciliation:reconcile",
-        "reconciliation:import",
-        "reconciliation:export",
-        "reconciliation:resolve",
-        "tickets:read",
-        "tickets:create",
-        "tickets:update",
-        "tickets:message",
-      ],
+    const [bearer, token] = authHeader.split(' ');
+    if (bearer !== 'Bearer' || !token) {
+      throw AppError.unauthorized('Invalid authorization format. Use Bearer token', ErrorCode.UNAUTHORIZED);
     }
-    ;(req as any).user = user
-    next()
-  } catch (error) {
-    logger.error("Authentication error", error)
-    res.status(401).json({
-      success: false,
-      error: "Invalid or expired token",
-    })
+
+    // 验证令牌并获取用户信息
+    const user = AuthService.verifyAccessToken(token);
+    req.user = user;
+
+    // 记录认证事件
+    logger.info('User authenticated', { userId: user.userId, email: user.email });
+
+    // 继续请求处理
+    next();
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.warn('Authentication failed', { error: errorMessage });
+    next(error as Error);
   }
-}
+};
 
-export function checkPermission(permission: string) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    const user = (req as any).user
+/**
+ * 授权中间件 - 验证用户角色
+ */
+export const authorize = (roles: string[]) => {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    try {
+      if (!req.user) {
+        throw AppError.unauthorized('User not authenticated', ErrorCode.UNAUTHORIZED);
+      }
 
-    if (!user || !user.permissions) {
-      return res.status(403).json({
-        success: false,
-        error: "Access denied",
-      })
-    }
+      // 检查用户是否有任何所需角色
+      const hasRole = req.user.roles.some(userRole => 
+        roles.includes(userRole)
+      );
 
-    if (!user.permissions.includes(permission)) {
-      logger.warn("Permission denied", {
-        userId: user.id,
-        permission,
-        path: req.path,
-      })
+      if (!hasRole) {
+        throw AppError.forbidden('Insufficient permissions', ErrorCode.FORBIDDEN);
+      }
 
-      return res.status(403).json({
-        success: false,
-        error: `Permission denied: ${permission}`,
-      })
-    }
+      logger.info('User authorized', {
+        userId: req.user.userId,
+        email: req.user.email,
+        requiredRoles: roles,
+        userRoles: req.user.roles
+      });
 
-    next()
+      next();
+    } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.warn('Authorization failed', { error: errorMessage });
+    next(error as Error);
   }
-}
+  };
+};
+
+/**
+ * 可选认证中间件 - 有令牌则认证，无令牌也可以继续
+ */
+export const optionalAuth = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader) {
+      const [bearer, token] = authHeader.split(' ');
+      if (bearer === 'Bearer' && token) {
+        try {
+          const user = AuthService.verifyAccessToken(token);
+          req.user = user;
+          logger.info('Optional authentication successful', { userId: user.userId });
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            // 可选认证情况下，令牌验证失败不阻止请求
+            logger.warn('Optional authentication token invalid', { error: errorMessage });
+        }
+      }
+    }
+    next();
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.warn('Optional authentication middleware error', { error: errorMessage });
+    next(); // 即使中间件本身出错，也继续请求处理
+  }
+};
+
+/**
+ * CSRF保护中间件
+ */
+export const csrfProtection = (req: Request, res: Response, next: NextFunction): void => {
+  // 对于API请求，通常只需要验证来源头
+  const origin = req.headers.origin;
+  const referer = req.headers.referer;
+  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'];
+
+  // 检查是否是安全的请求方法
+  const isSafeMethod = ['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(req.method);
+
+  // 对于不安全的方法，验证来源
+  if (!isSafeMethod && origin && !allowedOrigins.includes(origin)) {
+    logger.warn('CSRF protection rejected request', { origin, method: req.method });
+    return next(AppError.forbidden('Invalid CSRF token', ErrorCode.FORBIDDEN));
+  }
+
+  next();
+};
+
+/**
+ * 会话超时检查中间件
+ */
+export const sessionTimeout = (timeoutMinutes = 30) => {
+  const timeoutMs = timeoutMinutes * 60 * 1000;
+
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (req.user) {
+      // 这里简化处理，实际项目中可能需要在Redis中存储用户的最后活动时间
+      // 然后检查是否超过了超时时间
+      next();
+    } else {
+      next();
+    }
+  };
+};
+
+/**
+ * 获取当前用户信息辅助函数
+ */
+export const getCurrentUser = (req: Request): UserPayload | undefined => {
+  return req.user;
+};
+
+/**
+ * 检查用户是否已认证
+ */
+export const isAuthenticated = (req: Request): boolean => {
+  return !!req.user;
+};
+
+/**
+ * 检查用户是否具有特定角色
+ */
+export const hasRole = (req: Request, role: string): boolean => {
+  return req.user?.roles.includes(role) || false;
+};

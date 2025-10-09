@@ -1,5 +1,5 @@
 import React from "react";
-import renderer from "react-test-renderer";
+import { render, screen } from "@testing-library/react";
 
 // 模拟KPI卡片组件
 function KpiCard({
@@ -42,41 +42,47 @@ function KpiCard({
 
 describe("KpiCard Component", () => {
   it("renders correctly with all props", () => {
-    const tree = renderer
-      .create(
-        <KpiCard
-          title="总收入"
-          value={1234567.89}
-          currency="￥"
-          change={5.4}
-          timeframe="本月"
-          trend="up"
-        />
-      )
-      .toJSON();
-    expect(tree).toMatchSnapshot();
+    render(
+      <KpiCard
+        title="总收入"
+        value={1234567.89}
+        currency="￥"
+        change={5.4}
+        timeframe="本月"
+        trend="up"
+      />
+    );
+    
+    expect(screen.getByText("总收入")).toBeInTheDocument();
+    expect(screen.getByText("￥1,234,567.89")).toBeInTheDocument();
+    expect(screen.getByText("↑ 5.4%")).toBeInTheDocument();
+    expect(screen.getByText("本月")).toBeInTheDocument();
   });
 
   it("renders correctly with negative change", () => {
-    const tree = renderer
-      .create(
-        <KpiCard
-          title="总支出"
-          value={987654.32}
-          currency="$"
-          change={-2.1}
-          timeframe="本周"
-          trend="down"
-        />
-      )
-      .toJSON();
-    expect(tree).toMatchSnapshot();
+    render(
+      <KpiCard
+        title="总支出"
+        value={987654.32}
+        currency="$"
+        change={-2.1}
+        timeframe="本周"
+        trend="down"
+      />
+    );
+    
+    expect(screen.getByText("总支出")).toBeInTheDocument();
+    expect(screen.getByText("$987,654.32")).toBeInTheDocument();
+    expect(screen.getByText("↓ -2.1%")).toBeInTheDocument();
+    expect(screen.getByText("本周")).toBeInTheDocument();
   });
 
   it("renders correctly with minimal props", () => {
-    const tree = renderer
-      .create(<KpiCard title="用户数" value={42} change={0} timeframe="今日" />)
-      .toJSON();
-    expect(tree).toMatchSnapshot();
+    render(<KpiCard title="用户数" value={42} change={0} timeframe="今日" />);
+    
+    expect(screen.getByText("用户数")).toBeInTheDocument();
+    expect(screen.getByText("￥42")).toBeInTheDocument();
+    expect(screen.getByText("↑ 0%")).toBeInTheDocument();
+    expect(screen.getByText("今日")).toBeInTheDocument();
   });
 });

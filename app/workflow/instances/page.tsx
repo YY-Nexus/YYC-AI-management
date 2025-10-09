@@ -29,6 +29,24 @@ import {
 import { Eye, Play, Pause, Square, Filter } from "lucide-react";
 import { WorkflowInstance, WorkflowStatus } from "@/types/workflow";
 
+// 状态映射常量
+const STATUS_MAP = {
+  running: "运行中",
+  completed: "已完成",
+  failed: "失败",
+  canceled: "已取消",
+  suspended: "已暂停"
+} as const;
+
+// 状态徽章变体映射
+const STATUS_BADGE_VARIANT = {
+  running: "default" as const,
+  completed: "outline" as const,
+  failed: "destructive" as const,
+  canceled: "outline" as const,
+  suspended: "secondary" as const
+} as const;
+
 export default function WorkflowInstancesPage() {
   const [instances, setInstances] = useState<WorkflowInstance[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,35 +75,11 @@ export default function WorkflowInstancesPage() {
   };
 
   const getStatusBadgeVariant = (status: WorkflowStatus) => {
-    switch (status) {
-      case WorkflowStatus.RUNNING:
-        return "default";
-      case WorkflowStatus.COMPLETED:
-        return "outline";
-      case WorkflowStatus.FAILED:
-        return "destructive";
-      case WorkflowStatus.PAUSED:
-        return "secondary";
-      default:
-        return "outline";
-    }
+    return STATUS_BADGE_VARIANT[status] || "outline";
   };
 
   const getStatusText = (status: WorkflowStatus) => {
-    switch (status) {
-      case WorkflowStatus.PENDING:
-        return "待处理";
-      case WorkflowStatus.RUNNING:
-        return "运行中";
-      case WorkflowStatus.COMPLETED:
-        return "已完成";
-      case WorkflowStatus.FAILED:
-        return "失败";
-      case WorkflowStatus.PAUSED:
-        return "已暂停";
-      default:
-        return status;
-    }
+    return STATUS_MAP[status] || status;
   };
 
   const filteredInstances = instances.filter((instance) => {
@@ -153,11 +147,11 @@ export default function WorkflowInstancesPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">全部状态</SelectItem>
-                <SelectItem value={WorkflowStatus.PENDING}>待处理</SelectItem>
-                <SelectItem value={WorkflowStatus.RUNNING}>运行中</SelectItem>
-                <SelectItem value={WorkflowStatus.COMPLETED}>已完成</SelectItem>
-                <SelectItem value={WorkflowStatus.FAILED}>失败</SelectItem>
-                <SelectItem value={WorkflowStatus.PAUSED}>已暂停</SelectItem>
+                <SelectItem value="running">运行中</SelectItem>
+                <SelectItem value="completed">已完成</SelectItem>
+                <SelectItem value="failed">失败</SelectItem>
+                <SelectItem value="canceled">已取消</SelectItem>
+                <SelectItem value="suspended">已暂停</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -199,7 +193,7 @@ export default function WorkflowInstancesPage() {
                       <Button variant="outline" size="sm">
                         <Eye className="w-4 h-4" />
                       </Button>
-                      {instance.status === WorkflowStatus.RUNNING && (
+                      {instance.status === "running" && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -210,7 +204,7 @@ export default function WorkflowInstancesPage() {
                           <Pause className="w-4 h-4" />
                         </Button>
                       )}
-                      {instance.status === WorkflowStatus.PAUSED && (
+                      {instance.status === "suspended" && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -221,8 +215,8 @@ export default function WorkflowInstancesPage() {
                           <Play className="w-4 h-4" />
                         </Button>
                       )}
-                      {(instance.status === WorkflowStatus.RUNNING ||
-                        instance.status === WorkflowStatus.PAUSED) && (
+                      {(instance.status === "running" ||
+                        instance.status === "suspended") && (
                         <Button
                           variant="outline"
                           size="sm"

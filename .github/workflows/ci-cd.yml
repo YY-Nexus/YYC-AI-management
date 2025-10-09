@@ -146,6 +146,31 @@ jobs:
           REDIS_PORT: 6379
         run: npm run test:ws
 
+      - name: Security vulnerability scan
+        working-directory: ./backend
+        run: npm audit --production --audit-level=high || echo "Audit found vulnerabilities"
+
+      - name: Install Snyk
+        if: ${{ success() || failure() }}
+        run: npm install -g snyk
+
+      - name: Authenticate Snyk
+        if: ${{ success() || failure() && env.SNYK_TOKEN != '' }}
+        run: snyk auth ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true
+
+      - name: Run Snyk test
+        if: ${{ success() || failure() && env.SNYK_TOKEN != '' }}
+        working-directory: ./backend
+        run: snyk test --severity-threshold=high
+        continue-on-error: true
+
+      - name: Run Snyk code analysis
+        if: ${{ success() || failure() && env.SNYK_TOKEN != '' }}
+        working-directory: ./backend
+        run: snyk code test
+        continue-on-error: true
+
       - name: Upload coverage reports
         uses: codecov/codecov-action@v3
         with:

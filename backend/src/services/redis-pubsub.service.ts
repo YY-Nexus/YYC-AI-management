@@ -1,4 +1,4 @@
-import { redisPubClient, redisSubClient } from "../config/redis"
+import { redis as redisPubClient, redis as redisSubClient } from "../config/redis"
 import { logger } from "../config/logger"
 import { EventEmitter } from "events"
 

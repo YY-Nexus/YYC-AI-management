@@ -1,26 +1,16 @@
-// 测试环境全局设置
-import "@testing-library/jest-dom";
-import { TextEncoder, TextDecoder } from "util";
+// tests/setup.ts
 
-// 配置全局变量
-global.TextEncoder = TextEncoder;
-global.TextDecoder = TextDecoder;
+import '@testing-library/jest-dom';
+import { TextEncoder, TextDecoder } from 'util';
 
-// 配置环境变量
-process.env.NODE_ENV = "test";
-process.env.DB_HOST = "localhost";
-process.env.DB_PORT = "5432";
-process.env.DB_NAME = "test_db";
-process.env.DB_USER = "test";
-process.env.DB_PASSWORD = "test";
-process.env.REDIS_HOST = "localhost";
-process.env.REDIS_PORT = "6379";
-process.env.JWT_SECRET = "test-jwt-secret";
+// ✅ 设置全局编码器（兼容 Node 环境）
+(global as any).TextEncoder = TextEncoder;
+(global as any).TextDecoder = TextDecoder;
 
-// Mock全局函数
-Object.defineProperty(window, "matchMedia", {
+// ✅ mock 浏览器 API
+Object.defineProperty(window, 'matchMedia', {
   writable: true,
-  value: jest.fn().mockImplementation((query) => ({
+  value: jest.fn().mockImplementation((query: string) => ({
     matches: false,
     media: query,
     onchange: null,
@@ -32,24 +22,22 @@ Object.defineProperty(window, "matchMedia", {
   })),
 });
 
-// Mock ResizeObserver
-global.ResizeObserver = jest.fn().mockImplementation(() => ({
+(global as any).ResizeObserver = jest.fn().mockImplementation(() => ({
   observe: jest.fn(),
   unobserve: jest.fn(),
   disconnect: jest.fn(),
 }));
 
-// Mock IntersectionObserver
-global.IntersectionObserver = jest.fn().mockImplementation(() => ({
+(global as any).IntersectionObserver = jest.fn().mockImplementation(() => ({
   observe: jest.fn(),
   unobserve: jest.fn(),
   disconnect: jest.fn(),
 }));
 
-// 设置jest超时
+// ✅ 设置 Jest 超时
 jest.setTimeout(30000);
 
-// 全局beforeEach清理
+// ✅ 全局清理逻辑
 beforeEach(() => {
   jest.clearAllMocks();
 });

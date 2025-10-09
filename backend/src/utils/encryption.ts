@@ -1,4 +1,4 @@
-import crypto from "crypto";
+import * as crypto from "crypto";
 
 export class Encryption {
   private static algorithm = "aes-256-gcm";
@@ -13,7 +13,7 @@ export class Encryption {
     authTag: string;
   } {
     const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv(this.algorithm, this.key, iv);
+    const cipher = crypto.createCipheriv(this.algorithm, this.key, iv) as crypto.CipherGCM;
 
     let encrypted = cipher.update(text, "utf8", "hex");
     encrypted += cipher.final("hex");
@@ -31,7 +31,7 @@ export class Encryption {
       this.algorithm,
       this.key,
       Buffer.from(iv, "hex")
-    );
+    ) as crypto.DecipherGCM;
 
     decipher.setAuthTag(Buffer.from(authTag, "hex"));
 

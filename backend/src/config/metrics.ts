@@ -1,4 +1,4 @@
-import client from "prom-client"
+import * as client from "prom-client"
 
 // 创建注册表
 const register = new client.Registry()
@@ -43,6 +43,25 @@ export const exceptionsTotal = new client.Counter({
   registers: [register],
 })
 
+// Redis 指标
+export const redisConnectionStatus = new client.Gauge({
+  name: "redis_connection_status",
+  help: "Redis connection status (0 = disconnected, 1 = connected)",
+  registers: [register],
+})
+
+export const redisMemoryUsage = new client.Gauge({
+  name: "redis_memory_used_bytes",
+  help: "Memory used by Redis in bytes",
+  registers: [register],
+})
+
+export const redisKeys = new client.Gauge({
+  name: "redis_keys_total",
+  help: "Total number of keys in Redis",
+  registers: [register],
+})
+
 // 缓存指标
 export const cacheHits = new client.Counter({
   name: "cache_hits_total",
@@ -58,11 +77,38 @@ export const cacheMisses = new client.Counter({
   registers: [register],
 })
 
+export const cacheSize = new client.Gauge({
+  name: "cache_size_bytes",
+  help: "Current cache size in bytes",
+  registers: [register],
+})
+
+export const cacheEvictions = new client.Counter({
+  name: "cache_evictions_total",
+  help: "Total number of cache evictions",
+  labelNames: ["reason"],
+  registers: [register],
+})
+
+export const cacheHitRate = new client.Gauge({
+  name: "cache_hit_rate_ratio",
+  help: "Current cache hit rate percentage",
+  registers: [register],
+})
+
 export const cacheLatency = new client.Histogram({
   name: "cache_operation_duration_seconds",
   help: "Duration of cache operations in seconds",
-  labelNames: ["operation"],
+  labelNames: ["operation", "status"],
   buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5],
+  registers: [register],
+})
+
+// CSV 导入指标
+export const csvImportDuration = new client.Histogram({
+  name: "csv_import_duration_seconds",
+  help: "Duration of CSV import operations in seconds",
+  buckets: [10, 30, 60, 120, 300],
   registers: [register],
 })
 

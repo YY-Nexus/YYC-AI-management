@@ -128,7 +128,9 @@ const CustomNode = ({ data, selected }: { data: any; selected: boolean }) => {
       )}
     </div>
   );
-};
+}
+
+// 已有具名导出，不需要重复的默认导出
 
 // 节点类型映射
 const nodeTypes: NodeTypes = {
@@ -266,7 +268,7 @@ export function WorkflowDesigner({
       timer: "定时",
       webhook: "API调用",
       script: "脚本",
-    };
+    } as Record<string, string>;
 
     const newNode: Node = {
       id: `node_${Date.now()}`,

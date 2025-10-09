@@ -1,4 +1,4 @@
-import { SupportedLanguage } from "../lib/i18n.config";
+import { SupportedLanguage } from "./i18n.config";
 
 // 格式化日期
 export function formatDate(

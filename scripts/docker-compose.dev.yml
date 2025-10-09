@@ -10,11 +10,13 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=development
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/yanyu_cloud_dev
-      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://postgres:${DEV_DB_PASSWORD}@postgres:5432/yanyu_cloud_dev
+      - REDIS_URL=redis://:${DEV_REDIS_PASSWORD}@redis:6379
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - NEXT_PUBLIC_APP_URL=http://localhost:3000
+      - DEV_DB_PASSWORD=${DEV_DB_PASSWORD}
+      - DEV_REDIS_PASSWORD=${DEV_REDIS_PASSWORD}
     volumes:
       - ../:/app
       - /app/node_modules
@@ -39,10 +41,13 @@ services:
       - DB_PORT=5432
       - DB_NAME=yanyu_cloud_dev
       - DB_USER=postgres
-      - DB_PASSWORD=password
+      - DB_PASSWORD=${DEV_DB_PASSWORD}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - REDIS_PASSWORD=${DEV_REDIS_PASSWORD}
       - LOG_LEVEL=debug
+      - DEV_DB_PASSWORD=${DEV_DB_PASSWORD}
+      - DEV_REDIS_PASSWORD=${DEV_REDIS_PASSWORD}
     volumes:
       - ../backend:/app
       - /app/node_modules
@@ -58,7 +63,7 @@ services:
     environment:
       - POSTGRES_DB=yanyu_cloud_dev
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=password
+      - POSTGRES_PASSWORD=${DEV_DB_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
@@ -74,7 +79,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --requirepass ${DEV_REDIS_PASSWORD}
     ports:
       - "6379:6379"
     volumes:
@@ -82,7 +87,7 @@ services:
     networks:
       - yanyu-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${DEV_REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -90,7 +95,7 @@ services:
   redis-commander:
     image: rediscommander/redis-commander:latest
     environment:
-      - REDIS_HOSTS=local:redis:6379
+      - REDIS_HOSTS=local:redis:6379:0:${DEV_REDIS_PASSWORD}
     ports:
       - "8081:8081"
     depends_on:

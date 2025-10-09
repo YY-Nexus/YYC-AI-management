@@ -6,7 +6,9 @@ import { ErrorCode } from "../constants/error-codes";
 interface RequestWithId extends Request {
   id?: string;
   user?: {
-    id: string;
+    userId: string;
+    email: string;
+    roles: string[];
   };
 }
 
@@ -55,7 +57,7 @@ export function errorHandler(
         referer: req.get("referer"),
         "x-forwarded-for": req.get("x-forwarded-for"),
       },
-      userId: req.user?.id,
+      userId: req.user?.userId,
     },
   };
 

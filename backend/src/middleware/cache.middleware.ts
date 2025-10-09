@@ -96,7 +96,7 @@ export function invalidateCacheMiddleware(options: {
       if (res.statusCode >= 200 && res.statusCode < 300) {
         const patternsToInvalidate = typeof patterns === "function" ? patterns(req) : patterns
 
-        Promise.all(patternsToInvalidate.map((pattern) => cacheService.deletePattern(pattern, { prefix }))).catch(
+        Promise.all(patternsToInvalidate.map((pattern) => cacheService.delPattern(pattern, { prefix }))).catch(
           (error) => {
             logger.error("Failed to invalidate cache", { patterns: patternsToInvalidate, error })
           },

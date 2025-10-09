@@ -64,6 +64,9 @@ export interface WorkflowVariable {
   metadata?: Record<string, any>;
 }
 
+// 工作流状态类型
+export type WorkflowStatus = "running" | "completed" | "failed" | "canceled" | "suspended";
+
 // 工作流实例
 export interface WorkflowInstance {
   id: string;
@@ -105,7 +108,7 @@ export interface WorkflowTask {
   updatedAt: Date;
   dueDate?: Date;
   priority: "low" | "medium" | "high" | "urgent";
-  formData?: any;
+  formData?: Record<string, any>;
   comments?: WorkflowComment[];
   metadata?: Record<string, any>;
 }

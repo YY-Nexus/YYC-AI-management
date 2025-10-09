@@ -7,13 +7,20 @@ import { closeRedis, checkRedisHealth } from "./config/redis"
 import { pool } from "./config/database"
 import { WebSocketService } from "./services/websocket.service"
 import { notificationService } from "./services/notification.service"
-import { redisPubSub } from "./services/redis-pubsub.service"
+import { pubSubService } from "./services/redis-pubsub.service"
+
+// Middleware and services
+import { authenticate } from "./middleware/auth.middleware"
+import { errorHandler } from "./middleware/error-handler.middleware"
 
 // Routes
 import reconciliationRoutes from "./routes/reconciliation.routes"
 import ticketRoutes from "./routes/tickets.routes"
 import aiAnalysisRoutes from "./routes/ai-analysis.routes"
 import healthRoutes from "./routes/health.routes"
+import authRoutes from "./routes/auth.routes"
+import metricsRoutes from "./routes/metrics.routes"
+import securityRoutes from "./routes/security.routes"
 
 const app = express()
 const httpServer = createServer(app)
@@ -46,16 +53,18 @@ app.use((req, res, next) => {
 })
 
 // Initialize WebSocket service
-const wsService = new WebSocketService(httpServer)
-notificationService.setWebSocketService(wsService)
+export const wsService = new WebSocketService(httpServer)
 
 logger.info("WebSocket service initialized")
 
 // API Routes
-app.use("/api/reconciliation", reconciliationRoutes)
-app.use("/api/tickets", ticketRoutes)
-app.use("/api/ai-analysis", aiAnalysisRoutes)
+app.use("/api/auth", authRoutes)
+app.use("/api/reconciliation", authenticate, reconciliationRoutes)
+app.use("/api/tickets", authenticate, ticketRoutes)
+app.use("/api/ai-analysis", authenticate, aiAnalysisRoutes)
 app.use("/api/health", healthRoutes)
+app.use("/api/metrics", metricsRoutes)
+app.use("/api/security", authenticate, securityRoutes)
 
 // Root endpoint
 app.get("/", (req, res) => {
@@ -92,7 +101,7 @@ const gracefulShutdown = async () => {
   wsService.close()
 
   // Close Redis Pub/Sub
-  await redisPubSub.close()
+  await pubSubService.cleanup()
 
   // Close Redis connection
   await closeRedis()
@@ -136,4 +145,4 @@ httpServer.listen(PORT, async () => {
   }
 })
 
-export { app, httpServer, wsService }
+export { app, httpServer }

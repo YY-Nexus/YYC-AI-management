@@ -1,7 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express"
 import multer from "multer"
 import { CsvImportService } from "../services/csv-import.service"
-import { authMiddleware, checkPermission } from "../middleware/auth.middleware"
+import { authenticate as authMiddleware, authorize as checkPermission } from "../middleware/auth.middleware"
 import { rateLimiter } from "../middleware/rate-limiter.middleware"
 import { logger } from "../config/logger"
 
@@ -32,7 +32,7 @@ router.use(authMiddleware)
  */
 router.post(
   "/upload",
-  checkPermission("reconciliation:import"),
+  checkPermission(["reconciliation:import"]),
   rateLimiter({ windowMs: 300000, max: 5 }),
   upload.single("file"),
   async (req: Request, res: Response, next: NextFunction) => {
@@ -70,7 +70,7 @@ router.post(
  */
 router.get(
   "/batches",
-  checkPermission("reconciliation:read"),
+  checkPermission(["reconciliation:read"]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const filters = {
@@ -103,7 +103,7 @@ router.get(
  */
 router.get(
   "/export-exceptions",
-  checkPermission("reconciliation:export"),
+  checkPermission(["reconciliation:export"]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const exceptionIds = (req.query.ids as string)?.split(",") || []

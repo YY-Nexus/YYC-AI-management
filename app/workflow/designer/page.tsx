@@ -1,4 +1,4 @@
-import WorkflowDesigner from "@/components/workflow/workflow-designer";
+import { WorkflowDesigner } from '@/components/workflow/workflow-designer';
 
 export default function WorkflowDesignerPage() {
   return (

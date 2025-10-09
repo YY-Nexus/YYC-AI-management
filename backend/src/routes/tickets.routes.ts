@@ -1,7 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express"
 import { TicketService } from "../services/ticket.service"
 import { validateRequest } from "../middleware/validation.middleware"
-import { authMiddleware, checkPermission } from "../middleware/auth.middleware"
+import { authenticate as authMiddleware, authorize as checkPermission } from "../middleware/auth.middleware"
 import { rateLimiter } from "../middleware/rate-limiter.middleware"
 import { circuitBreaker } from "../middleware/circuit-breaker.middleware"
 import { logger } from "../config/logger"
@@ -42,7 +42,7 @@ router.use(authMiddleware)
  */
 router.get(
   "/",
-  checkPermission("tickets:read"),
+  checkPermission(["tickets:read"]),
   rateLimiter({ windowMs: 60000, max: 100 }),
   circuitBreaker({ threshold: 0.5, timeout: 30000, resetTimeout: 60000 }),
   async (req: Request, res: Response, next: NextFunction) => {
@@ -79,7 +79,7 @@ router.get(
  */
 router.get(
   "/:id",
-  checkPermission("tickets:read"),
+  checkPermission(["tickets:read"]),
   circuitBreaker({ threshold: 0.5, timeout: 30000, resetTimeout: 60000 }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -109,7 +109,7 @@ router.get(
  */
 router.post(
   "/",
-  checkPermission("tickets:create"),
+  checkPermission(["tickets:create"]),
   rateLimiter({ windowMs: 60000, max: 20 }),
   validateRequest(createTicketSchema, "body"),
   async (req: Request, res: Response, next: NextFunction) => {
@@ -144,7 +144,7 @@ router.post(
  */
 router.patch(
   "/:id",
-  checkPermission("tickets:update"),
+  checkPermission(["tickets:update"]),
   validateRequest(updateTicketSchema, "body"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -175,7 +175,7 @@ router.patch(
  */
 router.post(
   "/:id/messages",
-  checkPermission("tickets:message"),
+  checkPermission(["tickets:message"]),
   rateLimiter({ windowMs: 60000, max: 50 }),
   validateRequest(addMessageSchema, "body"),
   async (req: Request, res: Response, next: NextFunction) => {
@@ -184,9 +184,8 @@ router.post(
       const userName = (req as any).user.name
 
       const message = await ticketService.addMessage(req.params.id, {
-        sender: userId,
-        senderName: userName,
-        senderType: "agent",
+        authorId: userId,
+        authorName: userName,
         content: req.body.content,
         isInternal: req.body.isInternal,
       })
@@ -206,7 +205,7 @@ router.post(
  * @desc    获取工单统计
  * @access  Private (需要 tickets:read 权限)
  */
-router.get("/stats", checkPermission("tickets:read"), async (req: Request, res: Response, next: NextFunction) => {
+router.get("/stats", checkPermission(["tickets:read"]), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const stats = await ticketService.getStats()
 

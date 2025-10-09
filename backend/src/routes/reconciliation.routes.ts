@@ -1,7 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express"
 import { ReconciliationService } from "../services/reconciliation.service"
 import { validateRequest } from "../middleware/validation.middleware"
-import { authMiddleware, checkPermission } from "../middleware/auth.middleware"
+import { authenticate as authMiddleware, authorize as checkPermission } from "../middleware/auth.middleware"
 import { rateLimiter } from "../middleware/rate-limiter.middleware"
 import { httpRequestsTotal, httpRequestDuration } from "../config/metrics"
 import { logger } from "../config/logger"
@@ -76,7 +76,7 @@ router.use(authMiddleware)
  */
 router.get(
   "/records",
-  checkPermission("reconciliation:read"),
+  checkPermission(["reconciliation:read"]),
   rateLimiter({ windowMs: 60000, max: 100 }),
   validateRequest(getRecordsSchema, "query"),
   async (req: Request, res: Response, next: NextFunction) => {
@@ -115,7 +115,7 @@ router.get(
  */
 router.get(
   "/records/:id",
-  checkPermission("reconciliation:read"),
+  checkPermission(["reconciliation:read"]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const record = await reconciliationService.getRecordById(req.params.id)
@@ -144,7 +144,7 @@ router.get(
  */
 router.post(
   "/records",
-  checkPermission("reconciliation:write"),
+  checkPermission(["reconciliation:write"]),
   rateLimiter({ windowMs: 60000, max: 50 }),
   validateRequest(createRecordSchema, "body"),
   async (req: Request, res: Response, next: NextFunction) => {
@@ -181,7 +181,7 @@ router.post(
  */
 router.patch(
   "/records/:id",
-  checkPermission("reconciliation:write"),
+  checkPermission(["reconciliation:write"]),
   validateRequest(updateRecordSchema, "body"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -212,7 +212,7 @@ router.patch(
  */
 router.post(
   "/auto-reconcile",
-  checkPermission("reconciliation:reconcile"),
+  checkPermission(["reconciliation:reconcile"]),
   rateLimiter({ windowMs: 300000, max: 10 }),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -241,7 +241,7 @@ router.post(
  */
 router.get(
   "/stats",
-  checkPermission("reconciliation:read"),
+  checkPermission(["reconciliation:read"]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const stats = await reconciliationService.getStats()
@@ -263,7 +263,7 @@ router.get(
  */
 router.get(
   "/exceptions",
-  checkPermission("reconciliation:read"),
+  checkPermission(["reconciliation:read"]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const filters = {
@@ -297,7 +297,7 @@ router.get(
  */
 router.patch(
   "/exceptions/:id/resolve",
-  checkPermission("reconciliation:resolve"),
+  checkPermission(["reconciliation:resolve"]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = (req as any).user.id

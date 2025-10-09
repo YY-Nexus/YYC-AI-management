@@ -87,3 +87,20 @@ export interface CsvRecord {
   reference?: string
   customerName?: string
 }
+
+export interface ReconciliationFilters {
+  status?: string
+  startDate?: string
+  endDate?: string
+  customerName?: string
+  limit?: number
+  offset?: number
+}
+
+export interface ReconciliationResult {
+  success: boolean
+  processed: number
+  matched: number
+  failed: number
+  message?: string
+}

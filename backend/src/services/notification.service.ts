@@ -1,7 +1,8 @@
 import { pubSubService, RedisChannel, type PubSubMessage } from "./redis-pubsub.service"
-import { websocketService } from "./websocket.service"
+import { wsService } from '../server'
 import { logger } from "../config/logger"
-import { aiAnalysisMetrics } from "../config/metrics"
+import { aiAnalysisTotal, aiAnalysisErrors, aiAnalysisLatency, aiTokensUsed } from "../config/metrics"
+import type { NotificationPayload } from "../types/websocket"
 
 export enum NotificationEvent {
   // AI 分析事件
@@ -25,14 +26,7 @@ export enum NotificationEvent {
   SYSTEM_WARNING = "system:warning",
 }
 
-export interface NotificationPayload {
-  title: string
-  message: string
-  type: "info" | "success" | "warning" | "error"
-  data?: any
-  userId?: string
-  link?: string
-}
+
 
 class NotificationService {
   /**
@@ -79,40 +73,45 @@ class NotificationService {
       switch (event) {
         case NotificationEvent.AI_ANALYSIS_STARTED:
           notification = {
+            id: `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             title: "AI 分析已启动",
             message: `正在分析 ${data.recordCount} 条异常记录...`,
             type: "info",
+            priority: "medium",
             data,
             userId,
-            link: `/finance/reconciliation/${data.reconciliationId}`,
+            actionUrl: `/finance/reconciliation/${data.reconciliationId}`,
           }
           break
 
         case NotificationEvent.AI_ANALYSIS_COMPLETED:
           notification = {
+            id: `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             title: "AI 分析完成",
             message: `成功分析 ${data.analysisCount} 条记录，发现 ${data.issueCount} 个问题`,
             type: "success",
+            priority: "medium",
             data,
             userId,
-            link: `/finance/reconciliation/${data.reconciliationId}`,
+            actionUrl: `/finance/reconciliation/${data.reconciliationId}`,
           }
 
-          // 更新 Prometheus 指标
-          aiAnalysisMetrics.analysisCounter.inc()
+          aiAnalysisTotal.inc()
           break
 
         case NotificationEvent.AI_ANALYSIS_FAILED:
           notification = {
+            id: `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             title: "AI 分析失败",
             message: data.error || "分析过程中出现错误",
             type: "error",
+            priority: "high",
             data,
             userId,
-            link: `/finance/reconciliation/${data.reconciliationId}`,
+            actionUrl: `/finance/reconciliation/${data.reconciliationId}`,
           }
 
-          aiAnalysisMetrics.analysisErrorCounter.inc()
+          aiAnalysisErrors.inc()
           break
 
         default:
@@ -139,9 +138,11 @@ class NotificationService {
       switch (event) {
         case NotificationEvent.RECONCILIATION_STARTED:
           notification = {
+            id: `recon-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             title: "对账任务已启动",
             message: `开始处理 ${data.recordCount} 条记录`,
             type: "info",
+            priority: "low",
             data,
             userId,
           }
@@ -149,9 +150,11 @@ class NotificationService {
 
         case NotificationEvent.RECONCILIATION_COMPLETED:
           notification = {
+            id: `recon-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             title: "对账完成",
             message: `匹配 ${data.matchedCount} 条，未匹配 ${data.unmatchedCount} 条`,
             type: "success",
+            priority: "medium",
             data,
             userId,
           }
@@ -159,9 +162,11 @@ class NotificationService {
 
         case NotificationEvent.RECONCILIATION_UNMATCHED:
           notification = {
+            id: `recon-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             title: "发现未匹配记录",
             message: `有 ${data.unmatchedCount} 条记录需要人工处理`,
             type: "warning",
+            priority: "high",
             data,
             userId,
           }
@@ -196,10 +201,19 @@ class NotificationService {
     try {
       if (payload.userId) {
         // 发送给特定用户
-        websocketService.sendToUser(payload.userId, "notification", payload)
+        wsService.sendNotificationToUser(payload.userId, payload)
       } else {
         // 广播给所有用户
-        websocketService.broadcast("notification", payload)
+        wsService.broadcastToRole("admin", {
+          type: "notification",
+          payload,
+          timestamp: new Date().toISOString()
+        })
+        wsService.broadcastToRole("support", {
+          type: "notification",
+          payload,
+          timestamp: new Date().toISOString()
+        })
       }
 
       logger.info("[Notification Service] Notification sent", {

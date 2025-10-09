@@ -1,6 +1,6 @@
 import { Server, type Socket } from "socket.io"
 import type { Server as HttpServer } from "http"
-import jwt from "jsonwebtoken"
+import * as jwt from "jsonwebtoken"
 import { logger } from "../config/logger"
 import { redis } from "../config/redis"
 import type {

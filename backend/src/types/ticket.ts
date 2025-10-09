@@ -240,3 +240,37 @@ export interface TicketNotificationEvent {
   recipients: string[];
   data?: Record<string, any>;
 }
+
+// AI分析相关类型
+export interface TicketAnalysisResult {
+  sentiment: 'positive' | 'negative' | 'neutral';
+  urgency: 'low' | 'medium' | 'high' | 'critical';
+  category: string;
+  keywords: string[];
+  summary: string;
+}
+
+export interface ReplyRecommendation {
+  content: string;
+  confidence: number;
+  tone: string;
+  suggestedActions: string[];
+}
+
+export interface CustomerSatisfactionPrediction {
+  score: number;
+  factors: string[];
+  confidence: number;
+}
+
+export interface SmartDataExtraction {
+  entities: Record<string, string>;
+  keyIssues: string[];
+  requiredActions: string[];
+}
+
+export interface BatchClassificationResult {
+  ticketId: string;
+  category: string;
+  confidence: number;
+}

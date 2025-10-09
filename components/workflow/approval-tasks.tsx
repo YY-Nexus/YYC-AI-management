@@ -64,14 +64,16 @@ import {
   WorkflowInstance,
 } from "@/types/workflow";
 
-interface ApprovalTasksProps {
-  userId: string;
+export interface ApprovalTasksProps {
+  userId?: string;
+  showApprovalOnly?: boolean;
   onRefresh?: () => void;
   className?: string;
 }
 
 export function ApprovalTasks({
   userId,
+  showApprovalOnly = false,
   onRefresh,
   className = "",
 }: ApprovalTasksProps) {
@@ -90,10 +92,15 @@ export function ApprovalTasks({
     setLoading(true);
     try {
       const params = new URLSearchParams({
-        assignee: userId,
+        assignee: userId || '',
         status: status === "pending" ? "pending,in_progress" : status,
         limit: "50",
       });
+      
+      // 如果只显示审批任务，添加类型筛选
+      if (showApprovalOnly) {
+        params.append('type', 'approval');
+      }
 
       const response = await fetch(`/api/workflow/tasks?${params}`);
       if (response.ok) {
@@ -136,14 +143,20 @@ export function ApprovalTasks({
     setProcessingTaskId(taskId);
     try {
       const endpoint = action === "complete" ? "complete" : "reject";
+      // 创建headers对象，只在userId存在时添加X-User-Id
+      const headers: HeadersInit = {
+        "Content-Type": "application/json"
+      };
+      
+      if (userId) {
+        headers["X-User-Id"] = userId;
+      }
+      
       const response = await fetch(
         `/api/workflow/tasks/${taskId}/${endpoint}`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-User-Id": userId,
-          },
+          headers,
           body: JSON.stringify({
             comment: comment || undefined,
           }),
@@ -174,26 +187,33 @@ export function ApprovalTasks({
     setIsTaskDialogOpen(true);
   };
 
+  // 状态配置类型
+  interface StatusConfigItem {
+    label: string;
+    variant: "secondary" | "default" | "destructive" | "outline";
+    icon: React.ElementType;
+  }
+
   // 获取任务状态徽章
   const getStatusBadge = (status: string) => {
-    const statusConfig = {
-      pending: { label: "待处理", variant: "secondary" as const, icon: Clock },
+    const statusConfig: Record<string, StatusConfigItem> = {
+      pending: { label: "待处理", variant: "secondary", icon: Clock },
       in_progress: {
         label: "处理中",
-        variant: "default" as const,
+        variant: "default",
         icon: Timer,
       },
       completed: {
         label: "已完成",
-        variant: "default" as const,
+        variant: "default",
         icon: CheckCircle,
       },
       rejected: {
         label: "已拒绝",
-        variant: "destructive" as const,
+        variant: "destructive",
         icon: XCircle,
       },
-      canceled: { label: "已取消", variant: "outline" as const, icon: XCircle },
+      canceled: { label: "已取消", variant: "outline", icon: XCircle },
     };
 
     const config = statusConfig[status] || statusConfig.pending;
@@ -207,9 +227,15 @@ export function ApprovalTasks({
     );
   };
 
+  // 优先级配置类型
+  interface PriorityConfigItem {
+    label: string;
+    className: string;
+  }
+
   // 获取优先级徽章
   const getPriorityBadge = (priority: string) => {
-    const priorityConfig = {
+    const priorityConfig: Record<string, PriorityConfigItem> = {
       low: {
         label: "低",
         className: "bg-blue-50 text-blue-700 border-blue-200",

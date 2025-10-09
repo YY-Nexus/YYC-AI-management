@@ -461,34 +461,31 @@ export class CachedReconciliationService extends ReconciliationService {
     ])
   }
 
-  private async generateRecordNumber(): Promise<string> {
-    const date = new Date()
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, "0")
 
-    const query = `
-      SELECT COUNT(*) as count 
-      FROM reconciliation_records 
-      WHERE record_number LIKE $1
-    `
-    const result = await pool.query(query, [`REC-${year}${month}-%`])
-    const count = Number.parseInt(result.rows[0].count) + 1
 
-    return `REC-${year}${month}-${String(count).padStart(4, "0")}`
+  protected async getUnmatchedRecords(): Promise<ReconciliationRecord[]> {
+    const cacheKey = "records:unmatched"
+
+    return cacheService.wrap(
+      cacheKey,
+      async () => {
+        const query = `
+          SELECT * FROM reconciliation_records
+          WHERE status = 'unmatched'
+          ORDER BY transaction_date DESC
+          LIMIT 1000
+        `
+        const result = await pool.query(query)
+        return result.rows.map(this.mapDbRecordToModel)
+      },
+      {
+        prefix: this.CACHE_PREFIX,
+        ttl: this.CACHE_TTL.records,
+      },
+    )
   }
 
-  private async getUnmatchedRecords(): Promise<ReconciliationRecord[]> {
-    const query = `
-      SELECT * FROM reconciliation_records
-      WHERE status = 'unmatched'
-      ORDER BY transaction_date DESC
-      LIMIT 1000
-    `
-    const result = await pool.query(query)
-    return result.rows.map(this.mapDbRecordToModel)
-  }
-
-  private async getActiveRules(): Promise<ReconciliationRule[]> {
+  protected async getActiveRules(): Promise<ReconciliationRule[]> {
     const cacheKey = "rules:active"
 
     return cacheService.wrap(
@@ -509,7 +506,7 @@ export class CachedReconciliationService extends ReconciliationService {
     )
   }
 
-  private async findMatch(
+  protected async findMatch(
     record: ReconciliationRecord,
     rules: ReconciliationRule[],
   ): Promise<{ matchedRecordId: string; confidence: number } | null> {
@@ -522,7 +519,7 @@ export class CachedReconciliationService extends ReconciliationService {
     return null
   }
 
-  private async findAmountMatch(
+  protected async findAmountMatch(
     record: ReconciliationRecord,
     tolerance: number,
   ): Promise<{ matchedRecordId: string; confidence: number } | null> {
@@ -560,7 +557,7 @@ export class CachedReconciliationService extends ReconciliationService {
     return null
   }
 
-  private async createMatch(
+  protected async createMatch(
     recordId: string,
     matchedRecordId: string,
     confidence: number,
@@ -575,7 +572,7 @@ export class CachedReconciliationService extends ReconciliationService {
     await pool.query(query, [recordId, matchedRecordId, confidence, matchType, userId])
   }
 
-  private async updateRecordStatus(recordId: string, status: string): Promise<void> {
+  protected async updateRecordStatus(recordId: string, status: string): Promise<void> {
     const query = `
       UPDATE reconciliation_records
       SET status = $1, updated_at = CURRENT_TIMESTAMP
@@ -584,7 +581,7 @@ export class CachedReconciliationService extends ReconciliationService {
     await pool.query(query, [status, recordId])
   }
 
-  private mapDbRecordToModel(row: any): ReconciliationRecord {
+  protected mapDbRecordToModel(row: any): ReconciliationRecord {
     return {
       id: row.id,
       recordNumber: row.record_number,
@@ -606,7 +603,7 @@ export class CachedReconciliationService extends ReconciliationService {
     }
   }
 
-  private mapDbRuleToModel(row: any): ReconciliationRule {
+  protected mapDbRuleToModel(row: any): ReconciliationRule {
     return {
       id: row.id,
       ruleName: row.rule_name,
@@ -618,7 +615,7 @@ export class CachedReconciliationService extends ReconciliationService {
     }
   }
 
-  private mapDbExceptionToModel(row: any): ReconciliationException {
+  protected mapDbExceptionToModel(row: any): ReconciliationException {
     return {
       id: row.id,
       recordId: row.record_id,

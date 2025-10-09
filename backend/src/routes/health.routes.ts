@@ -29,14 +29,14 @@ router.get("/ready", async (req: Request, res: Response) => {
   try {
     // 检查数据库
     const dbHealth = await checkDatabaseHealth()
-    if (dbHealth.status !== "healthy") {
-      throw new Error(`Database unhealthy: ${dbHealth.error}`)
+    if (!dbHealth) {
+      throw new Error(`Database unhealthy`)
     }
 
     // 检查 Redis
     const redisHealth = await checkRedisHealth()
-    if (redisHealth.status !== "healthy") {
-      throw new Error(`Redis unhealthy: ${redisHealth.error}`)
+    if (!redisHealth) {
+      throw new Error(`Redis unhealthy`)
     }
 
     res.json({

@@ -25,7 +25,7 @@ export class CacheService {
 
       if (cached) {
         this.hitCount++
-        cacheHits.inc({ cache_type: options.prefix || "default", status: "success" })
+        cacheHits.inc({ cache_key_pattern: options.prefix || "default" })
         cacheLatency.observe({ operation: "get", status: "hit" }, duration)
         this.updateHitRate()
 
@@ -42,7 +42,7 @@ export class CacheService {
       }
     } catch (error) {
       const duration = (Date.now() - start) / 1000
-      cacheHits.inc({ cache_type: options.prefix || "default", status: "error" })
+      cacheHits.inc({ cache_key_pattern: options.prefix || "default" })
       cacheLatency.observe({ operation: "get", status: "error" }, duration)
 
       logger.error("Cache get error", { key: fullKey, error })

@@ -65,7 +65,7 @@ module.exports = {
   ],
 
   // 测试环境设置
-  setupFilesAfterEnv: ["<rootDir>/tests/setup.js"],
+  setupFilesAfterEnv: ["<rootDir>/tests/setup.ts"],
 
   // 超时设置
   testTimeout: 30000,
