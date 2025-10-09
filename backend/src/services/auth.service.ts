@@ -428,14 +428,16 @@ export class AuthService {
 
   // 生成访问令牌
   static generateAccessToken(payload: TokenPayload): string {
-    return jwt.sign(payload, JWT_SECRET, {
+    // 由于已在文件顶部验证过环境变量，这里使用非空断言
+    return jwt.sign(payload, JWT_SECRET!, {
       expiresIn: ACCESS_TOKEN_EXPIRY,
     });
   }
 
   // 生成刷新令牌
   static generateRefreshToken(payload: TokenPayload): string {
-    return jwt.sign(payload, JWT_REFRESH_SECRET, {
+    // 由于已在文件顶部验证过环境变量，这里使用非空断言
+    return jwt.sign(payload, JWT_REFRESH_SECRET!, {
       expiresIn: REFRESH_TOKEN_EXPIRY,
     });
   }
@@ -443,7 +445,9 @@ export class AuthService {
   // 验证访问令牌
   static verifyAccessToken(token: string): TokenPayload {
     try {
-      return jwt.verify(token, JWT_SECRET) as TokenPayload;
+      // 先转换为unknown再转换为TokenPayload
+      const decoded = jwt.verify(token, JWT_SECRET!);
+      return decoded as unknown as TokenPayload;
     } catch (error) {
       throw AppError.unauthorized('Invalid or expired access token', ErrorCode.INVALID_TOKEN);
     }
@@ -452,7 +456,9 @@ export class AuthService {
   // 验证刷新令牌
   static verifyRefreshToken(token: string): TokenPayload {
     try {
-      return jwt.verify(token, JWT_REFRESH_SECRET) as TokenPayload;
+      // 先转换为unknown再转换为TokenPayload
+      const decoded = jwt.verify(token, JWT_REFRESH_SECRET!);
+      return decoded as unknown as TokenPayload;
     } catch (error) {
       throw AppError.unauthorized('Invalid or expired refresh token', ErrorCode.INVALID_TOKEN);
     }
