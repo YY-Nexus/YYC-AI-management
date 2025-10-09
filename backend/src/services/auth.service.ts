@@ -429,16 +429,20 @@ export class AuthService {
   // 生成访问令牌
   static generateAccessToken(payload: TokenPayload): string {
     // 由于已在文件顶部验证过环境变量，这里使用非空断言
-    return jwt.sign(payload as object, JWT_SECRET! as string, {
-      expiresIn: ACCESS_TOKEN_EXPIRY,
+    const secret = JWT_SECRET!;
+    const payloadObj = { ...payload };
+    return jwt.sign(payloadObj, secret, {
+      expiresIn: ACCESS_TOKEN_EXPIRY as string,
     });
   }
 
   // 生成刷新令牌
   static generateRefreshToken(payload: TokenPayload): string {
     // 由于已在文件顶部验证过环境变量，这里使用非空断言
-    return jwt.sign(payload as object, JWT_REFRESH_SECRET! as string, {
-      expiresIn: REFRESH_TOKEN_EXPIRY,
+    const secret = JWT_REFRESH_SECRET!;
+    const payloadObj = { ...payload };
+    return jwt.sign(payloadObj, secret, {
+      expiresIn: REFRESH_TOKEN_EXPIRY as string,
     });
   }
 
