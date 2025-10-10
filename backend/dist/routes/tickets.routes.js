@@ -1,52 +1,49 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-const express_1 = require("express");
-const ticket_service_1 = require("../services/ticket.service");
-const validation_middleware_1 = require("../middleware/validation.middleware");
-const auth_middleware_1 = require("../middleware/auth.middleware");
-const rate_limiter_middleware_1 = require("../middleware/rate-limiter.middleware");
-const circuit_breaker_middleware_1 = require("../middleware/circuit-breaker.middleware");
-const logger_1 = require("../config/logger");
-const joi_1 = __importDefault(require("joi"));
-const router = (0, express_1.Router)();
-const ticketService = new ticket_service_1.TicketService();
+// 修复tickets.routes.ts文件中的TypeScript错误
+const express = require('express');
+const { TicketService } = require("../services/ticket.service");
+const { validateRequest } = require("../middleware/validation.middleware");
+const { authenticate: authMiddleware, authorize: checkPermission } = require("../middleware/auth.middleware");
+const { rateLimiter } = require("../middleware/rate-limiter.middleware");
+const { circuitBreaker } = require("../middleware/circuit-breaker.middleware");
+const { logger } = require("../config/logger");
+const Joi = require("joi");
+const router = express.Router();
+const ticketService = new TicketService();
 // 请求验证 schemas
-const createTicketSchema = joi_1.default.object({
-    title: joi_1.default.string().required().max(200),
-    description: joi_1.default.string().required().max(2000),
-    category: joi_1.default.string().required(),
-    priority: joi_1.default.string().valid("low", "medium", "high", "urgent").required(),
-    customerName: joi_1.default.string().required().max(200),
-    customerEmail: joi_1.default.string().email().required(),
-    customerPhone: joi_1.default.string().max(20).optional(),
+const createTicketSchema = Joi.object({
+    title: Joi.string().required().max(200),
+    description: Joi.string().required().max(2000),
+    category: Joi.string().required(),
+    priority: Joi.string().valid("low", "medium", "high", "urgent").required(),
+    customerName: Joi.string().required().max(200),
+    customerEmail: Joi.string().email().required(),
+    customerPhone: Joi.string().max(20).optional(),
 });
-const updateTicketSchema = joi_1.default.object({
-    status: joi_1.default.string().valid("open", "in-progress", "pending", "resolved", "closed").optional(),
-    priority: joi_1.default.string().valid("low", "medium", "high", "urgent").optional(),
-    assignedTo: joi_1.default.string().uuid().optional(),
-    notes: joi_1.default.string().max(1000).optional(),
+const updateTicketSchema = Joi.object({
+    status: Joi.string().valid("open", "in-progress", "pending", "resolved", "closed").optional(),
+    priority: Joi.string().valid("low", "medium", "high", "urgent").optional(),
+    assignedTo: Joi.string().uuid().optional(),
+    notes: Joi.string().max(1000).optional(),
 });
-const addMessageSchema = joi_1.default.object({
-    content: joi_1.default.string().required().max(2000),
-    isInternal: joi_1.default.boolean().default(false),
+const addMessageSchema = Joi.object({
+    content: Joi.string().required().max(2000),
+    isInternal: Joi.boolean().default(false),
 });
-router.use(auth_middleware_1.authenticate);
+router.use(authMiddleware);
 /**
  * @route   GET /api/tickets
  * @desc    获取工单列表
  * @access  Private (需要 tickets:read 权限)
  */
-router.get("/", (0, auth_middleware_1.authorize)(["tickets:read"]), (0, rate_limiter_middleware_1.rateLimiter)({ windowMs: 60000, max: 100 }), (0, circuit_breaker_middleware_1.circuitBreaker)({ threshold: 0.5, timeout: 30000, resetTimeout: 60000 }), async (req, res, next) => {
+router.get("/", checkPermission(["tickets:read"]), rateLimiter({ windowMs: 60000, max: 100 }), circuitBreaker({ threshold: 0.5, timeout: 30000, resetTimeout: 60000 }), async (req, res, next) => {
     try {
         const filters = {
             status: req.query.status,
             priority: req.query.priority,
             assignedTo: req.query.assignedTo,
-            limit: Number.parseInt(req.query.limit) || 50,
-            offset: Number.parseInt(req.query.offset) || 0,
+            limit: parseInt(req.query.limit) || 50,
+            offset: parseInt(req.query.offset) || 0,
         };
         const result = await ticketService.getTickets(filters);
         res.json({
@@ -68,7 +65,7 @@ router.get("/", (0, auth_middleware_1.authorize)(["tickets:read"]), (0, rate_lim
  * @desc    获取工单详情
  * @access  Private (需要 tickets:read 权限)
  */
-router.get("/:id", (0, auth_middleware_1.authorize)(["tickets:read"]), (0, circuit_breaker_middleware_1.circuitBreaker)({ threshold: 0.5, timeout: 30000, resetTimeout: 60000 }), async (req, res, next) => {
+router.get("/:id", checkPermission(["tickets:read"]), circuitBreaker({ threshold: 0.5, timeout: 30000, resetTimeout: 60000 }), async (req, res, next) => {
     try {
         const ticket = await ticketService.getTicketById(req.params.id);
         if (!ticket) {
@@ -91,7 +88,7 @@ router.get("/:id", (0, auth_middleware_1.authorize)(["tickets:read"]), (0, circu
  * @desc    创建工单
  * @access  Private (需要 tickets:create 权限)
  */
-router.post("/", (0, auth_middleware_1.authorize)(["tickets:create"]), (0, rate_limiter_middleware_1.rateLimiter)({ windowMs: 60000, max: 20 }), (0, validation_middleware_1.validateRequest)(createTicketSchema, "body"), async (req, res, next) => {
+router.post("/", checkPermission(["tickets:create"]), rateLimiter({ windowMs: 60000, max: 20 }), validateRequest(createTicketSchema, "body"), async (req, res, next) => {
     try {
         const userId = req.user.id;
         const ticketData = {
@@ -99,7 +96,7 @@ router.post("/", (0, auth_middleware_1.authorize)(["tickets:create"]), (0, rate_
             createdBy: userId,
         };
         const ticket = await ticketService.createTicket(ticketData);
-        logger_1.logger.info("Ticket created", {
+        logger.info("Ticket created", {
             ticketId: ticket.id,
             userId,
         });
@@ -117,7 +114,7 @@ router.post("/", (0, auth_middleware_1.authorize)(["tickets:create"]), (0, rate_
  * @desc    更新工单
  * @access  Private (需要 tickets:update 权限)
  */
-router.patch("/:id", (0, auth_middleware_1.authorize)(["tickets:update"]), (0, validation_middleware_1.validateRequest)(updateTicketSchema, "body"), async (req, res, next) => {
+router.patch("/:id", checkPermission(["tickets:update"]), validateRequest(updateTicketSchema, "body"), async (req, res, next) => {
     try {
         const userId = req.user.id;
         const ticket = await ticketService.updateTicket(req.params.id, req.body, userId);
@@ -141,7 +138,7 @@ router.patch("/:id", (0, auth_middleware_1.authorize)(["tickets:update"]), (0, v
  * @desc    添加工单消息
  * @access  Private (需要 tickets:message 权限)
  */
-router.post("/:id/messages", (0, auth_middleware_1.authorize)(["tickets:message"]), (0, rate_limiter_middleware_1.rateLimiter)({ windowMs: 60000, max: 50 }), (0, validation_middleware_1.validateRequest)(addMessageSchema, "body"), async (req, res, next) => {
+router.post("/:id/messages", checkPermission(["tickets:message"]), rateLimiter({ windowMs: 60000, max: 50 }), validateRequest(addMessageSchema, "body"), async (req, res, next) => {
     try {
         const userId = req.user.id;
         const userName = req.user.name;
@@ -165,7 +162,7 @@ router.post("/:id/messages", (0, auth_middleware_1.authorize)(["tickets:message"
  * @desc    获取工单统计
  * @access  Private (需要 tickets:read 权限)
  */
-router.get("/stats", (0, auth_middleware_1.authorize)(["tickets:read"]), async (req, res, next) => {
+router.get("/stats", checkPermission(["tickets:read"]), async (req, res, next) => {
     try {
         const stats = await ticketService.getStats();
         res.json({
@@ -177,4 +174,5 @@ router.get("/stats", (0, auth_middleware_1.authorize)(["tickets:read"]), async (
         next(error);
     }
 });
-exports.default = router;
+// 导出路由
+module.exports = router;

@@ -40,4 +40,4 @@ function initializeWebSocketRoutes(service) {
     });
     return router;
 }
-exports.default = router;
+module.exports = router;

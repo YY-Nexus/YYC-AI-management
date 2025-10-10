@@ -108,4 +108,4 @@ router.get('/database', async (req, res, next) => {
         next(error);
     }
 });
-exports.default = router;
+module.exports = router;

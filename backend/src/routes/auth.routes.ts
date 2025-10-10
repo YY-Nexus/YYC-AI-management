@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { body, validationResult } from 'express-validator';
-import { AuthService } from '../services/auth.service';
+import AuthService from '../services/auth.service';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 import { logger } from '../config/logger';
 import { AppError } from '../utils/app-error';
@@ -335,4 +335,4 @@ router.get('/permissions', authenticate, async (req: Request, res: Response, nex
   }
 });
 
-export default router;
+module.exports = router;

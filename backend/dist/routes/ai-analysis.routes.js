@@ -1,50 +1,16 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", { value: true });
-const express_1 = require("express");
-const ai_analysis_service_1 = require("../services/ai-analysis.service");
-const openai_service_1 = require("../services/openai.service");
-const prompt_templates_service_1 = require("../services/prompt-templates.service");
-const reconciliation_service_1 = require("../services/reconciliation.service");
-const ticket_intelligence_service_1 = require("../services/ai/ticket-intelligence.service");
-const auth_middleware_1 = require("../middleware/auth.middleware");
-const rate_limiter_middleware_1 = require("../middleware/rate-limiter.middleware");
-const validation_middleware_1 = require("../middleware/validation.middleware");
-const logger_1 = require("../config/logger");
-const Joi = __importStar(require("joi"));
-const router = (0, express_1.Router)();
+const express = require('express');
+const { AiAnalysisService } = require("../services/ai-analysis.service");
+const { OpenAIService } = require("../services/openai.service");
+const { PromptTemplatesService } = require("../services/prompt-templates.service");
+const { ReconciliationService } = require("../services/reconciliation.service");
+const { ticketIntelligenceService } = require('../services/ai/ticket-intelligence.service');
+const { authenticate: authMiddleware, authorize: checkPermission } = require("../middleware/auth.middleware");
+const { rateLimiter } = require("../middleware/rate-limiter.middleware");
+const { validateRequest } = require("../middleware/validation.middleware");
+const { logger } = require("../config/logger");
+const Joi = require("joi");
+const router = express.Router();
 // 初始化服务
 const openaiConfig = {
     apiKey: process.env.OPENAI_API_KEY || "",
@@ -53,10 +19,10 @@ const openaiConfig = {
     timeout: 30000,
     organization: process.env.OPENAI_ORGANIZATION,
 };
-const openaiService = new openai_service_1.OpenAIService(openaiConfig);
-const promptService = new prompt_templates_service_1.PromptTemplatesService();
-const reconciliationService = new reconciliation_service_1.ReconciliationService();
-const aiAnalysisService = new ai_analysis_service_1.AiAnalysisService(openaiService, promptService, reconciliationService);
+const openaiService = new OpenAIService(openaiConfig);
+const promptService = new PromptTemplatesService();
+const reconciliationService = new ReconciliationService();
+const aiAnalysisService = new AiAnalysisService(openaiService, promptService, reconciliationService);
 // 请求验证 schemas
 const analyzeRecordSchema = Joi.object({
     recordId: Joi.string().uuid().required(),
@@ -69,17 +35,17 @@ const analyzeTrendsSchema = Joi.object({
     endDate: Joi.date().iso().required(),
 });
 // 应用中间件
-router.use(auth_middleware_1.authenticate);
+router.use(authMiddleware);
 /**
  * @route   POST /api/ai-analysis/analyze/:recordId
  * @desc    分析单条异常记录
  * @access  Private (需要 ai:analyze 权限)
  */
-router.post("/analyze/:recordId", (0, auth_middleware_1.authorize)(["ai:analyze"]), (0, rate_limiter_middleware_1.rateLimiter)({ windowMs: 60000, max: 20 }), (0, validation_middleware_1.validateRequest)(analyzeRecordSchema, "params"), async (req, res, next) => {
+router.post("/analyze/:recordId", checkPermission(["ai:analyze"]), rateLimiter({ windowMs: 60000, max: 20 }), validateRequest(analyzeRecordSchema, "params"), async (req, res, next) => {
     try {
         const { recordId } = req.params;
         const userId = req.user.id;
-        logger_1.logger.info("AI analysis requested", { recordId, userId });
+        logger.info("AI analysis requested", { recordId, userId });
         // 生成分析请求
         const analysisRequest = await aiAnalysisService.generateAnalysisRequestForRecord(recordId);
         // 执行分析
@@ -90,7 +56,7 @@ router.post("/analyze/:recordId", (0, auth_middleware_1.authorize)(["ai:analyze"
         });
     }
     catch (error) {
-        logger_1.logger.error("AI analysis failed", { error: error.message });
+        logger.error("AI analysis failed", { error: error.message });
         next(error);
     }
 });
@@ -99,11 +65,11 @@ router.post("/analyze/:recordId", (0, auth_middleware_1.authorize)(["ai:analyze"
  * @desc    批量分析异常记录
  * @access  Private (需要 ai:analyze 权限)
  */
-router.post("/analyze-batch", (0, auth_middleware_1.authorize)(["ai:analyze"]), (0, rate_limiter_middleware_1.rateLimiter)({ windowMs: 300000, max: 5 }), (0, validation_middleware_1.validateRequest)(analyzeBatchSchema, "body"), async (req, res, next) => {
+router.post("/analyze-batch", checkPermission(["ai:analyze"]), rateLimiter({ windowMs: 300000, max: 5 }), validateRequest(analyzeBatchSchema, "body"), async (req, res, next) => {
     try {
         const { recordIds } = req.body;
         const userId = req.user.id;
-        logger_1.logger.info("Batch AI analysis requested", {
+        logger.info("Batch AI analysis requested", {
             count: recordIds.length,
             userId,
         });
@@ -122,7 +88,7 @@ router.post("/analyze-batch", (0, auth_middleware_1.authorize)(["ai:analyze"]), 
         });
     }
     catch (error) {
-        logger_1.logger.error("Batch AI analysis failed", { error: error.message });
+        logger.error("Batch AI analysis failed", { error: error.message });
         next(error);
     }
 });
@@ -131,11 +97,11 @@ router.post("/analyze-batch", (0, auth_middleware_1.authorize)(["ai:analyze"]), 
  * @desc    分析异常趋势
  * @access  Private (需要 ai:analyze 权限)
  */
-router.post("/analyze-trends", (0, auth_middleware_1.authorize)(["ai:analyze"]), (0, rate_limiter_middleware_1.rateLimiter)({ windowMs: 60000, max: 10 }), (0, validation_middleware_1.validateRequest)(analyzeTrendsSchema, "body"), async (req, res, next) => {
+router.post("/analyze-trends", checkPermission(["ai:analyze"]), rateLimiter({ windowMs: 60000, max: 10 }), validateRequest(analyzeTrendsSchema, "body"), async (req, res, next) => {
     try {
         const { startDate, endDate } = req.body;
         const userId = req.user.id;
-        logger_1.logger.info("Trend analysis requested", {
+        logger.info("Trend analysis requested", {
             startDate,
             endDate,
             userId,
@@ -150,7 +116,7 @@ router.post("/analyze-trends", (0, auth_middleware_1.authorize)(["ai:analyze"]),
         });
     }
     catch (error) {
-        logger_1.logger.error("Trend analysis failed", { error: error.message });
+        logger.error("Trend analysis failed", { error: error.message });
         next(error);
     }
 });
@@ -159,7 +125,7 @@ router.post("/analyze-trends", (0, auth_middleware_1.authorize)(["ai:analyze"]),
  * @desc    获取 API 速率限制信息
  * @access  Private (需要 ai:analyze 权限)
  */
-router.get("/rate-limit", (0, auth_middleware_1.authorize)(["ai:analyze"]), async (req, res, next) => {
+router.get("/rate-limit", checkPermission(["ai:analyze"]), async (req, res, next) => {
     try {
         const rateLimitInfo = openaiService.getRateLimitInfo();
         res.json({
@@ -176,7 +142,7 @@ router.get("/rate-limit", (0, auth_middleware_1.authorize)(["ai:analyze"]), asyn
  * @desc    检查 OpenAI 连接健康状态
  * @access  Private (需要 ai:analyze 权限)
  */
-router.get("/health", (0, auth_middleware_1.authorize)(["ai:analyze"]), async (req, res, next) => {
+router.get("/health", checkPermission(["ai:analyze"]), async (req, res, next) => {
     try {
         const isHealthy = await openaiService.validateConnection();
         res.json({
@@ -197,17 +163,17 @@ router.get("/health", (0, auth_middleware_1.authorize)(["ai:analyze"]), async (r
  * @desc Analyze a ticket content using AI
  * @access Private (需要 ai:analyze 权限)
  */
-router.post('/tickets/:id/analyze', (0, auth_middleware_1.authorize)(['ai:analyze']), (0, rate_limiter_middleware_1.rateLimiter)({ windowMs: 60000, max: 20 }), (0, validation_middleware_1.validateRequest)(Joi.object({
+router.post('/tickets/:id/analyze', checkPermission(['ai:analyze']), rateLimiter({ windowMs: 60000, max: 20 }), validateRequest(Joi.object({
     content: Joi.string().required().min(10).max(10000).label('Ticket content')
 }), 'body'), async (req, res, next) => {
     try {
         const { id: ticketId } = req.params;
         const { content } = req.body;
         const userId = req.user.id;
-        logger_1.logger.info('Ticket analysis requested', { ticketId, userId });
-        const analysisResult = await ticket_intelligence_service_1.ticketIntelligenceService.analyzeTicket(ticketId, content);
-        await ticket_intelligence_service_1.ticketIntelligenceService.saveAnalysisResult(ticketId, analysisResult);
-        logger_1.logger.info('Ticket analysis completed successfully', { ticketId });
+        logger.info('Ticket analysis requested', { ticketId, userId });
+        const analysisResult = await ticketIntelligenceService.analyzeTicket(ticketId, content);
+        await ticketIntelligenceService.saveAnalysisResult(ticketId, analysisResult);
+        logger.info('Ticket analysis completed successfully', { ticketId });
         res.json({
             success: true,
             data: analysisResult,
@@ -215,7 +181,7 @@ router.post('/tickets/:id/analyze', (0, auth_middleware_1.authorize)(['ai:analyz
         });
     }
     catch (error) {
-        logger_1.logger.error('Failed to analyze ticket', { ticketId: req.params.id, error: error.message });
+        logger.error('Failed to analyze ticket', { ticketId: req.params.id, error: error.message });
         next(error);
     }
 });
@@ -224,7 +190,7 @@ router.post('/tickets/:id/analyze', (0, auth_middleware_1.authorize)(['ai:analyz
  * @desc Generate reply recommendation for a ticket
  * @access Private (需要 ai:analyze 权限)
  */
-router.post('/tickets/:id/reply-recommendation', (0, auth_middleware_1.authorize)(['ai:analyze']), (0, rate_limiter_middleware_1.rateLimiter)({ windowMs: 60000, max: 20 }), (0, validation_middleware_1.validateRequest)(Joi.object({
+router.post('/tickets/:id/reply-recommendation', checkPermission(['ai:analyze']), rateLimiter({ windowMs: 60000, max: 20 }), validateRequest(Joi.object({
     content: Joi.string().required().min(10).max(10000).label('Ticket content'),
     context: Joi.string().allow('').optional().max(5000).label('Context information')
 }), 'body'), async (req, res, next) => {
@@ -232,9 +198,9 @@ router.post('/tickets/:id/reply-recommendation', (0, auth_middleware_1.authorize
         const { id: ticketId } = req.params;
         const { content, context } = req.body;
         const userId = req.user.id;
-        logger_1.logger.info('Reply recommendation requested', { ticketId, userId });
-        const replyRecommendation = await ticket_intelligence_service_1.ticketIntelligenceService.generateReplyRecommendation(ticketId, content, context);
-        logger_1.logger.info('Reply recommendation generated successfully', { ticketId });
+        logger.info('Reply recommendation requested', { ticketId, userId });
+        const replyRecommendation = await ticketIntelligenceService.generateReplyRecommendation(ticketId, content, context);
+        logger.info('Reply recommendation generated successfully', { ticketId });
         res.json({
             success: true,
             data: replyRecommendation,
@@ -242,7 +208,7 @@ router.post('/tickets/:id/reply-recommendation', (0, auth_middleware_1.authorize
         });
     }
     catch (error) {
-        logger_1.logger.error('Failed to generate reply recommendation', { ticketId: req.params.id, error: error.message });
+        logger.error('Failed to generate reply recommendation', { ticketId: req.params.id, error: error.message });
         next(error);
     }
 });
@@ -251,15 +217,15 @@ router.post('/tickets/:id/reply-recommendation', (0, auth_middleware_1.authorize
  * @desc Analyze sentiment of text
  * @access Private (需要 ai:analyze 权限)
  */
-router.post('/sentiment', (0, auth_middleware_1.authorize)(['ai:analyze']), (0, rate_limiter_middleware_1.rateLimiter)({ windowMs: 60000, max: 50 }), (0, validation_middleware_1.validateRequest)(Joi.object({
+router.post('/sentiment', checkPermission(['ai:analyze']), rateLimiter({ windowMs: 60000, max: 50 }), validateRequest(Joi.object({
     text: Joi.string().required().min(5).max(5000).label('Text for sentiment analysis')
 }), 'body'), async (req, res, next) => {
     try {
         const { text } = req.body;
         const userId = req.user.id;
-        logger_1.logger.info('Sentiment analysis requested', { userId });
-        const sentimentResult = await ticket_intelligence_service_1.ticketIntelligenceService.analyzeSentiment(text);
-        logger_1.logger.info('Sentiment analysis completed successfully');
+        logger.info('Sentiment analysis requested', { userId });
+        const sentimentResult = await ticketIntelligenceService.analyzeSentiment(text);
+        logger.info('Sentiment analysis completed successfully');
         res.json({
             success: true,
             data: sentimentResult,
@@ -267,7 +233,7 @@ router.post('/sentiment', (0, auth_middleware_1.authorize)(['ai:analyze']), (0, 
         });
     }
     catch (error) {
-        logger_1.logger.error('Failed to analyze sentiment', { error: error.message });
+        logger.error('Failed to analyze sentiment', { error: error.message });
         next(error);
     }
 });
@@ -276,16 +242,16 @@ router.post('/sentiment', (0, auth_middleware_1.authorize)(['ai:analyze']), (0, 
  * @desc Extract structured data from text
  * @access Private (需要 ai:analyze 权限)
  */
-router.post('/data-extraction', (0, auth_middleware_1.authorize)(['ai:analyze']), (0, rate_limiter_middleware_1.rateLimiter)({ windowMs: 60000, max: 30 }), (0, validation_middleware_1.validateRequest)(Joi.object({
+router.post('/data-extraction', checkPermission(['ai:analyze']), rateLimiter({ windowMs: 60000, max: 30 }), validateRequest(Joi.object({
     content: Joi.string().required().min(10).max(10000).label('Content for data extraction'),
     targetFields: Joi.array().items(Joi.string()).optional().label('Target fields to extract')
 }), 'body'), async (req, res, next) => {
     try {
         const { content, targetFields } = req.body;
         const userId = req.user.id;
-        logger_1.logger.info('Data extraction requested', { userId });
-        const extractionResult = await ticket_intelligence_service_1.ticketIntelligenceService.extractSmartData(content, targetFields);
-        logger_1.logger.info('Data extraction completed successfully');
+        logger.info('Data extraction requested', { userId });
+        const extractionResult = await ticketIntelligenceService.extractSmartData(content, targetFields);
+        logger.info('Data extraction completed successfully');
         res.json({
             success: true,
             data: extractionResult,
@@ -293,7 +259,7 @@ router.post('/data-extraction', (0, auth_middleware_1.authorize)(['ai:analyze'])
         });
     }
     catch (error) {
-        logger_1.logger.error('Failed to extract data', { error: error.message });
+        logger.error('Failed to extract data', { error: error.message });
         next(error);
     }
 });
@@ -302,7 +268,7 @@ router.post('/data-extraction', (0, auth_middleware_1.authorize)(['ai:analyze'])
  * @desc Predict customer satisfaction
  * @access Private (需要 ai:analyze 权限)
  */
-router.post('/tickets/:id/customer-satisfaction', (0, auth_middleware_1.authorize)(['ai:analyze']), (0, rate_limiter_middleware_1.rateLimiter)({ windowMs: 60000, max: 20 }), (0, validation_middleware_1.validateRequest)(Joi.object({
+router.post('/tickets/:id/customer-satisfaction', checkPermission(['ai:analyze']), rateLimiter({ windowMs: 60000, max: 20 }), validateRequest(Joi.object({
     content: Joi.string().required().min(10).max(10000).label('Ticket content'),
     customerHistory: Joi.string().allow('').optional().max(5000).label('Customer history')
 }), 'body'), async (req, res, next) => {
@@ -310,9 +276,9 @@ router.post('/tickets/:id/customer-satisfaction', (0, auth_middleware_1.authoriz
         const { id: ticketId } = req.params;
         const { content, customerHistory } = req.body;
         const userId = req.user.id;
-        logger_1.logger.info('Customer satisfaction prediction requested', { ticketId, userId });
-        const predictionResult = await ticket_intelligence_service_1.ticketIntelligenceService.predictCustomerSatisfaction(ticketId, content, customerHistory);
-        logger_1.logger.info('Customer satisfaction prediction completed successfully', { ticketId });
+        logger.info('Customer satisfaction prediction requested', { ticketId, userId });
+        const predictionResult = await ticketIntelligenceService.predictCustomerSatisfaction(ticketId, content, customerHistory);
+        logger.info('Customer satisfaction prediction completed successfully', { ticketId });
         res.json({
             success: true,
             data: predictionResult,
@@ -320,7 +286,7 @@ router.post('/tickets/:id/customer-satisfaction', (0, auth_middleware_1.authoriz
         });
     }
     catch (error) {
-        logger_1.logger.error('Failed to predict customer satisfaction', { ticketId: req.params.id, error: error.message });
+        logger.error('Failed to predict customer satisfaction', { ticketId: req.params.id, error: error.message });
         next(error);
     }
 });
@@ -329,7 +295,7 @@ router.post('/tickets/:id/customer-satisfaction', (0, auth_middleware_1.authoriz
  * @desc Batch classify tickets
  * @access Private (需要 ai:analyze 权限)
  */
-router.post('/tickets/batch-classify', (0, auth_middleware_1.authorize)(['ai:analyze']), (0, rate_limiter_middleware_1.rateLimiter)({ windowMs: 300000, max: 10 }), (0, validation_middleware_1.validateRequest)(Joi.object({
+router.post('/tickets/batch-classify', checkPermission(['ai:analyze']), rateLimiter({ windowMs: 300000, max: 10 }), validateRequest(Joi.object({
     tickets: Joi.array().items(Joi.object({
         id: Joi.string().required().label('Ticket ID'),
         content: Joi.string().required().min(10).max(5000).label('Ticket content')
@@ -339,9 +305,9 @@ router.post('/tickets/batch-classify', (0, auth_middleware_1.authorize)(['ai:ana
     try {
         const { tickets, categories } = req.body;
         const userId = req.user.id;
-        logger_1.logger.info('Batch ticket classification requested', { count: tickets.length, userId });
-        const classificationResult = await ticket_intelligence_service_1.ticketIntelligenceService.batchClassifyTickets(tickets, categories);
-        logger_1.logger.info('Batch ticket classification completed successfully');
+        logger.info('Batch ticket classification requested', { count: tickets.length, userId });
+        const classificationResult = await ticketIntelligenceService.batchClassifyTickets(tickets, categories);
+        logger.info('Batch ticket classification completed successfully');
         res.json({
             success: true,
             data: classificationResult,
@@ -350,8 +316,8 @@ router.post('/tickets/batch-classify', (0, auth_middleware_1.authorize)(['ai:ana
         });
     }
     catch (error) {
-        logger_1.logger.error('Failed to batch classify tickets', { error: error.message });
+        logger.error('Failed to batch classify tickets', { error: error.message });
         next(error);
     }
 });
-exports.default = router;
+module.exports = router;

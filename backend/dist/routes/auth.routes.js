@@ -275,4 +275,4 @@ router.get('/permissions', auth_middleware_1.authenticate, async (req, res, next
         next(error);
     }
 });
-exports.default = router;
+module.exports = router;

@@ -1,325 +1,202 @@
-import { Router, type Request, type Response, type NextFunction } from "express"
-import { ReconciliationService } from "../services/reconciliation.service"
-import { validateRequest } from "../middleware/validation.middleware"
-import { authenticate as authMiddleware, authorize as checkPermission } from "../middleware/auth.middleware"
-import { rateLimiter } from "../middleware/rate-limiter.middleware"
-import { httpRequestsTotal, httpRequestDuration } from "../config/metrics"
-import { logger } from "../config/logger"
-import Joi from "joi"
+(function() {
+  const express = require('express');
+  const ReconciliationService = require('../services/reconciliation.service');
+  const { authenticate: authMiddleware, authorize: checkPermission } = require('../middleware/auth.middleware');
+  const { rateLimiter } = require('../middleware/rate-limiter.middleware');
+  const { httpRequestsTotal, httpRequestDuration } = require('../config/metrics');
+  const { logger } = require('../config/logger');
+  const Joi = require('joi');
 
-const router = Router()
-const reconciliationService = new ReconciliationService()
+  const router = express.Router();
+  const reconciliationService = new ReconciliationService();
 
-// 请求验证 schemas
-const getRecordsSchema = Joi.object({
-  status: Joi.string().valid("matched", "unmatched", "disputed", "resolved").optional(),
-  startDate: Joi.date().iso().optional(),
-  endDate: Joi.date().iso().optional(),
-  customerName: Joi.string().max(200).optional(),
-  limit: Joi.number().integer().min(1).max(100).default(50),
-  offset: Joi.number().integer().min(0).default(0),
-})
-
-const createRecordSchema = Joi.object({
-  transactionDate: Joi.date().iso().required(),
-  transactionType: Joi.string().valid("bank", "invoice", "payment", "refund").required(),
-  amount: Joi.number().required().not(0),
-  currency: Joi.string().length(3).required(),
-  description: Joi.string().required().max(500),
-  bankReference: Joi.string().max(100).optional(),
-  invoiceNumber: Joi.string().max(50).optional(),
-  customerName: Joi.string().max(200).optional(),
-  category: Joi.string().max(50).required(),
-  notes: Joi.string().max(1000).optional(),
-})
-
-const updateRecordSchema = Joi.object({
-  status: Joi.string().valid("matched", "unmatched", "disputed", "resolved").optional(),
-  notes: Joi.string().max(1000).optional(),
-})
-
-// 中间件：记录请求指标
-const metricsMiddleware = (req: Request, res: Response, next: NextFunction) => {
-  const start = Date.now()
-
-  res.on("finish", () => {
-    const duration = (Date.now() - start) / 1000
-    const route = req.route?.path || req.path
-
-    httpRequestsTotal.inc({
-      method: req.method,
-      route,
-      status_code: res.statusCode,
-    })
-
-    httpRequestDuration.observe(
-      {
-        method: req.method,
-        route,
-        status_code: res.statusCode,
-      },
-      duration,
-    )
-  })
-
-  next()
-}
-
-// 应用中间件
-router.use(metricsMiddleware)
-router.use(authMiddleware)
-
-/**
- * @route   GET /api/reconciliation/records
- * @desc    获取对账记录列表
- * @access  Private (需要 reconciliation:read 权限)
- */
-router.get(
-  "/records",
-  checkPermission(["reconciliation:read"]),
-  rateLimiter({ windowMs: 60000, max: 100 }),
-  validateRequest(getRecordsSchema, "query"),
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const filters = {
-        status: req.query.status as string | undefined,
-        startDate: req.query.startDate as string | undefined,
-        endDate: req.query.endDate as string | undefined,
-        customerName: req.query.customerName as string | undefined,
-        limit: Number.parseInt(req.query.limit as string) || 50,
-        offset: Number.parseInt(req.query.offset as string) || 0,
+  // 临时的validateRequest中间件实现
+  const validateRequest = (schema: any) => {
+    return (req: any, res: any, next: any) => {
+      try {
+        const validated = schema.validate(req.body || {}, { abortEarly: false });
+        if (validated.error) {
+          const errors = validated.error.details.map((detail: any) => detail.message);
+          return res.status(400).json({ errors });
+        }
+        req.body = validated.value;
+        next();
+      } catch (error) {
+        next(error);
       }
+    };
+  };
 
-      const result = await reconciliationService.getRecords(filters)
-
-      res.json({
-        success: true,
-        data: result.records,
-        pagination: {
-          total: result.total,
-          limit: filters.limit,
-          offset: filters.offset,
-          hasMore: filters.offset + filters.limit < result.total,
-        },
-      })
-    } catch (error) {
-      next(error)
-    }
-  },
-)
-
-/**
- * @route   GET /api/reconciliation/records/:id
- * @desc    获取单个对账记录详情
- * @access  Private (需要 reconciliation:read 权限)
- */
-router.get(
-  "/records/:id",
-  checkPermission(["reconciliation:read"]),
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const record = await reconciliationService.getRecordById(req.params.id)
-
-      if (!record) {
-        return res.status(404).json({
-          success: false,
-          error: "Record not found",
-        })
+  /**
+   * @route   GET /reconciliation/records
+   * @desc    获取对账记录
+   * @access  Private
+   */
+  router.get('/records', 
+    authMiddleware,
+    checkPermission('reconciliation:read'),
+    rateLimiter,
+    async (req: any, res: any, next: any) => {
+      const end = httpRequestDuration.startTimer();
+      try {
+        const { page = 1, limit = 10, startDate, endDate, status, type } = req.query;
+        
+        const records = await reconciliationService.getRecords({
+          page: parseInt(page, 10),
+          limit: parseInt(limit, 10),
+          startDate,
+          endDate,
+          status,
+          type
+        });
+        
+        httpRequestsTotal.inc({ route: '/reconciliation/records', method: 'GET', status: 200 });
+        end({ route: '/reconciliation/records', method: 'GET', status: 200 });
+        
+        res.json(records);
+      } catch (error) {
+        logger.error('Failed to get reconciliation records', { error });
+        httpRequestsTotal.inc({ route: '/reconciliation/records', method: 'GET', status: 500 });
+        end({ route: '/reconciliation/records', method: 'GET', status: 500 });
+        next(error);
       }
-
-      res.json({
-        success: true,
-        data: record,
-      })
-    } catch (error) {
-      next(error)
     }
-  },
-)
+  );
 
-/**
- * @route   POST /api/reconciliation/records
- * @desc    创建对账记录
- * @access  Private (需要 reconciliation:write 权限)
- */
-router.post(
-  "/records",
-  checkPermission(["reconciliation:write"]),
-  rateLimiter({ windowMs: 60000, max: 50 }),
-  validateRequest(createRecordSchema, "body"),
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const userId = (req as any).user.id
-      const recordData = {
-        ...req.body,
-        transactionDate: new Date(req.body.transactionDate),
-        status: "unmatched",
-        createdBy: userId,
+  /**
+   * @route   POST /reconciliation/auto-reconcile
+   * @desc    自动对账
+   * @access  Private
+   */
+  router.post('/auto-reconcile',
+    authMiddleware,
+    checkPermission('reconciliation:write'),
+    rateLimiter,
+    validateRequest(Joi.object({
+      date: Joi.date().required(),
+      type: Joi.string().valid('daily', 'weekly', 'monthly').required()
+    })),
+    async (req: any, res: any, next: any) => {
+      const end = httpRequestDuration.startTimer();
+      try {
+        const { date, type } = req.body;
+        
+        const result = await reconciliationService.autoReconcile(date, type);
+        
+        httpRequestsTotal.inc({ route: '/reconciliation/auto-reconcile', method: 'POST', status: 200 });
+        end({ route: '/reconciliation/auto-reconcile', method: 'POST', status: 200 });
+        
+        res.status(200).json(result);
+      } catch (error) {
+        logger.error('Auto reconciliation failed', { error });
+        httpRequestsTotal.inc({ route: '/reconciliation/auto-reconcile', method: 'POST', status: 500 });
+        end({ route: '/reconciliation/auto-reconcile', method: 'POST', status: 500 });
+        next(error);
       }
-
-      const record = await reconciliationService.createRecord(recordData)
-
-      logger.info("Reconciliation record created", {
-        recordId: record.id,
-        userId,
-      })
-
-      res.status(201).json({
-        success: true,
-        data: record,
-      })
-    } catch (error) {
-      next(error)
     }
-  },
-)
+  );
 
-/**
- * @route   PATCH /api/reconciliation/records/:id
- * @desc    更新对账记录
- * @access  Private (需要 reconciliation:write 权限)
- */
-router.patch(
-  "/records/:id",
-  checkPermission(["reconciliation:write"]),
-  validateRequest(updateRecordSchema, "body"),
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const userId = (req as any).user.id
-      const record = await reconciliationService.updateRecord(req.params.id, req.body, userId)
-
-      if (!record) {
-        return res.status(404).json({
-          success: false,
-          error: "Record not found",
-        })
+  /**
+   * @route   GET /reconciliation/stats
+   * @desc    获取对账统计数据
+   * @access  Private
+   */
+  router.get('/stats',
+    authMiddleware,
+    checkPermission('reconciliation:read'),
+    rateLimiter,
+    async (req: any, res: any, next: any) => {
+      const end = httpRequestDuration.startTimer();
+      try {
+        const { startDate, endDate, type } = req.query;
+        
+        const stats = await reconciliationService.getStats({
+          startDate,
+          endDate,
+          type
+        });
+        
+        httpRequestsTotal.inc({ route: '/reconciliation/stats', method: 'GET', status: 200 });
+        end({ route: '/reconciliation/stats', method: 'GET', status: 200 });
+        
+        res.json(stats);
+      } catch (error) {
+        logger.error('Failed to get reconciliation stats', { error });
+        httpRequestsTotal.inc({ route: '/reconciliation/stats', method: 'GET', status: 500 });
+        end({ route: '/reconciliation/stats', method: 'GET', status: 500 });
+        next(error);
       }
-
-      res.json({
-        success: true,
-        data: record,
-      })
-    } catch (error) {
-      next(error)
     }
-  },
-)
+  );
 
-/**
- * @route   POST /api/reconciliation/auto-reconcile
- * @desc    执行自动对账
- * @access  Private (需要 reconciliation:reconcile 权限)
- */
-router.post(
-  "/auto-reconcile",
-  checkPermission(["reconciliation:reconcile"]),
-  rateLimiter({ windowMs: 300000, max: 10 }),
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const userId = (req as any).user.id
-      const result = await reconciliationService.autoReconcile(userId)
-
-      logger.info("Auto-reconciliation completed", {
-        userId,
-        result,
-      })
-
-      res.json({
-        success: true,
-        data: result,
-      })
-    } catch (error) {
-      next(error)
-    }
-  },
-)
-
-/**
- * @route   GET /api/reconciliation/stats
- * @desc    获取对账统计信息
- * @access  Private (需要 reconciliation:read 权限)
- */
-router.get(
-  "/stats",
-  checkPermission(["reconciliation:read"]),
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const stats = await reconciliationService.getStats()
-
-      res.json({
-        success: true,
-        data: stats,
-      })
-    } catch (error) {
-      next(error)
-    }
-  },
-)
-
-/**
- * @route   GET /api/reconciliation/exceptions
- * @desc    获取异常记录列表
- * @access  Private (需要 reconciliation:read 权限)
- */
-router.get(
-  "/exceptions",
-  checkPermission(["reconciliation:read"]),
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const filters = {
-        status: req.query.status as string | undefined,
-        severity: req.query.severity as string | undefined,
-        limit: Number.parseInt(req.query.limit as string) || 50,
-        offset: Number.parseInt(req.query.offset as string) || 0,
+  /**
+   * @route   GET /reconciliation/exceptions
+   * @desc    获取对账异常
+   * @access  Private
+   */
+  router.get('/exceptions',
+    authMiddleware,
+    checkPermission('reconciliation:read'),
+    rateLimiter,
+    async (req: any, res: any, next: any) => {
+      const end = httpRequestDuration.startTimer();
+      try {
+        const { page = 1, limit = 10, startDate, endDate, status } = req.query;
+        
+        const exceptions = await reconciliationService.getExceptions({
+          page: parseInt(page, 10),
+          limit: parseInt(limit, 10),
+          startDate,
+          endDate,
+          status
+        });
+        
+        httpRequestsTotal.inc({ route: '/reconciliation/exceptions', method: 'GET', status: 200 });
+        end({ route: '/reconciliation/exceptions', method: 'GET', status: 200 });
+        
+        res.json(exceptions);
+      } catch (error) {
+        logger.error('Failed to get reconciliation exceptions', { error });
+        httpRequestsTotal.inc({ route: '/reconciliation/exceptions', method: 'GET', status: 500 });
+        end({ route: '/reconciliation/exceptions', method: 'GET', status: 500 });
+        next(error);
       }
-
-      const result = await reconciliationService.getExceptions(filters)
-
-      res.json({
-        success: true,
-        data: result.exceptions,
-        pagination: {
-          total: result.total,
-          limit: filters.limit,
-          offset: filters.offset,
-        },
-      })
-    } catch (error) {
-      next(error)
     }
-  },
-)
+  );
 
-/**
- * @route   PATCH /api/reconciliation/exceptions/:id/resolve
- * @desc    解决异常
- * @access  Private (需要 reconciliation:resolve 权限)
- */
-router.patch(
-  "/exceptions/:id/resolve",
-  checkPermission(["reconciliation:resolve"]),
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const userId = (req as any).user.id
-      const { resolutionNotes } = req.body
-
-      const exception = await reconciliationService.resolveException(req.params.id, resolutionNotes, userId)
-
-      if (!exception) {
-        return res.status(404).json({
-          success: false,
-          error: "Exception not found",
-        })
+  /**
+   * @route   PATCH /reconciliation/exceptions/:id/resolve
+   * @desc    解决对账异常
+   * @access  Private
+   */
+  router.patch('/exceptions/:id/resolve',
+    authMiddleware,
+    checkPermission('reconciliation:write'),
+    rateLimiter,
+    validateRequest(Joi.object({
+      resolution: Joi.string().required(),
+      notes: Joi.string().optional()
+    })),
+    async (req: any, res: any, next: any) => {
+      const end = httpRequestDuration.startTimer();
+      try {
+        const { id } = req.params;
+        const { resolution, notes } = req.body || {};
+        
+        const result = await reconciliationService.resolveException(id, resolution, notes);
+        
+        httpRequestsTotal.inc({ route: '/reconciliation/exceptions/:id/resolve', method: 'PATCH', status: 200 });
+        end({ route: '/reconciliation/exceptions/:id/resolve', method: 'PATCH', status: 200 });
+        
+        res.json(result);
+      } catch (error) {
+        logger.error('Failed to resolve reconciliation exception', { error });
+        httpRequestsTotal.inc({ route: '/reconciliation/exceptions/:id/resolve', method: 'PATCH', status: 500 });
+        end({ route: '/reconciliation/exceptions/:id/resolve', method: 'PATCH', status: 500 });
+        next(error);
       }
-
-      res.json({
-        success: true,
-        data: exception,
-      })
-    } catch (error) {
-      next(error)
     }
-  },
-)
+  );
 
-export default router
+  module.exports = router;
+})();

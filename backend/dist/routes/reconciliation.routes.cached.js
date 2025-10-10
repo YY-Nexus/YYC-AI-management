@@ -145,7 +145,8 @@ router.put("/:id", (0, auth_middleware_1.authorize)(["reconciliation:write"]), (
     prefix: "reconciliation",
 }), async (req, res, next) => {
     try {
-        const record = await reconciliation_service_cached_1.cachedReconciliationService.updateRecord(req.params.id, req.body);
+        const userId = req.user?.userId;
+        const record = await reconciliation_service_cached_1.cachedReconciliationService.updateRecord(req.params.id, req.body, userId);
         if (!record) {
             return res.status(404).json({
                 success: false,
@@ -208,4 +209,4 @@ router.post("/:id/resolve", (0, auth_middleware_1.authorize)(["reconciliation:re
         next(error);
     }
 });
-exports.default = router;
+module.exports = router;

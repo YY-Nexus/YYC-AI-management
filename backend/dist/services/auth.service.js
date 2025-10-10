@@ -1,66 +1,75 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
+// 在文件顶部添加dotenv配置以确保环境变量正确加载
+const dotenv = require('dotenv');
+// 添加调试日志，检查dotenv配置
+console.log('Before dotenv.config:', {
+    hasDotenv: !!dotenv,
+    processEnvKeys: Object.keys(process.env).slice(0, 5) // 只显示前5个环境变量键名
 });
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.AuthService = void 0;
-const error_codes_1 = require("../constants/error-codes");
-const bcrypt = __importStar(require("bcrypt"));
-const jwt = __importStar(require("jsonwebtoken"));
-const crypto = __importStar(require("crypto"));
-const database_1 = require("../config/database");
-const redis_1 = require("../config/redis");
-const logger_1 = require("../config/logger");
-const app_error_1 = require("../utils/app-error");
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key';
-const ACCESS_TOKEN_EXPIRY = '15m';
-const REFRESH_TOKEN_EXPIRY = '7d';
-const SALT_ROUNDS = 10;
-class AuthService {
-    // 用户注册
-    static async register(email, password, firstName, lastName) {
+dotenv.config();
+// 再次检查环境变量
+console.log('After dotenv.config:', {
+    hasJWTSecret: !!process.env.JWT_SECRET,
+    hasJWTRefreshSecret: !!process.env.JWT_REFRESH_SECRET,
+    processEnvKeys: Object.keys(process.env).slice(0, 5)
+});
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+const { pool } = require('../config/database');
+const { redis } = require('../config/redis');
+const { logger } = require('../config/logger');
+const { AppError } = require('../utils/app-error');
+const { ErrorCode } = require('../constants/error-codes');
+// 从环境变量获取密钥，不提供默认值以确保安全
+const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
+const ACCESS_TOKEN_EXPIRY = process.env.JWT_EXPIRES_IN || '15m';
+const REFRESH_TOKEN_EXPIRY = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
+const SALT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || '10');
+// 添加调试日志
+console.log('Loaded environment variables:', {
+    JWT_SECRET: JWT_SECRET ? 'Present (hidden)' : 'Not found',
+    JWT_REFRESH_SECRET: JWT_REFRESH_SECRET ? 'Present (hidden)' : 'Not found',
+    ACCESS_TOKEN_EXPIRY,
+    REFRESH_TOKEN_EXPIRY,
+    SALT_ROUNDS
+});
+// 验证必要的环境变量是否存在
+if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
+    console.error('Critical error: Missing JWT secrets in environment variables');
+    throw new Error('JWT secrets are not configured in environment variables');
+}
+/**
+ * @typedef {Object} TokenPayload
+ * @property {string} userId
+ * @property {string} email
+ * @property {string[]} roles
+ */
+/**
+ * 认证服务类
+ */
+const AuthService = {
+    /**
+     * 用户注册
+     * @param {string} email - 用户邮箱
+     * @param {string} password - 用户密码
+     * @param {string} firstName - 用户名字
+     * @param {string} lastName - 用户姓氏
+     * @returns {Promise<{user: Object, accessToken: string, refreshToken: string}>}
+     */
+    async register(email, password, firstName, lastName) {
         try {
             // 检查邮箱是否已存在
-            const existingUser = await database_1.pool.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
+            const existingUser = await pool.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
             if (existingUser.rows.length > 0) {
-                throw app_error_1.AppError.conflict('Email already exists', error_codes_1.ErrorCode.CONFLICT);
+                throw AppError.conflict('Email already exists', ErrorCode.CONFLICT);
             }
             // 加密密码
             const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
             // 创建用户
             const userId = crypto.randomUUID();
-            const result = await database_1.pool.query(`INSERT INTO users (
+            const result = await pool.query(`INSERT INTO users (
           id, email, password_hash, first_name, last_name, 
           status, created_at, updated_at
         )
@@ -68,343 +77,254 @@ class AuthService {
         RETURNING id, email, first_name, last_name, status, created_at`, [userId, email.toLowerCase(), hashedPassword, firstName, lastName]);
             const user = result.rows[0];
             // 分配默认角色
-            await database_1.pool.query(`INSERT INTO user_roles (user_id, role_id)
+            await pool.query(`INSERT INTO user_roles (user_id, role_id)
         SELECT $1, id FROM roles WHERE role_name = 'user'`, [userId]);
             // 生成令牌
             const accessToken = this.generateAccessToken({
                 userId: user.id,
                 email: user.email,
-                roles: ['user'],
+                roles: ['user']
             });
-            const refreshToken = this.generateRefreshToken({
-                userId: user.id,
-                email: user.email,
-                roles: ['user'],
-            });
+            const refreshToken = this.generateRefreshToken(user.id);
             // 存储刷新令牌
-            await this.storeRefreshToken(userId, refreshToken);
-            logger_1.logger.info('User registered successfully', { userId, email });
-            return {
-                user: {
-                    id: user.id,
-                    email: user.email,
-                    firstName: user.first_name,
-                    lastName: user.last_name,
-                    status: user.status,
-                    createdAt: user.created_at,
-                },
-                accessToken,
-                refreshToken,
-            };
+            await this.storeRefreshToken(user.id, refreshToken);
+            logger.info('User registered successfully', { userId: user.id, email: user.email });
+            return { user, accessToken, refreshToken };
         }
         catch (error) {
-            logger_1.logger.error('Registration failed', { error, email });
+            logger.error('Registration failed', { email, error: error.message });
             throw error;
         }
-    }
-    // 用户登录
-    static async login(email, password, ipAddress) {
+    },
+    /**
+     * 生成访问令牌
+     * @param {TokenPayload} payload
+     * @returns {string}
+     */
+    generateAccessToken(payload) {
+        return jwt.sign(payload, JWT_SECRET, {
+            expiresIn: ACCESS_TOKEN_EXPIRY
+        });
+    },
+    /**
+     * 生成刷新令牌
+     * @param {string} userId
+     * @returns {string}
+     */
+    generateRefreshToken(userId) {
+        return jwt.sign({ userId }, JWT_REFRESH_SECRET, {
+            expiresIn: REFRESH_TOKEN_EXPIRY
+        });
+    },
+    /**
+     * 验证访问令牌
+     * @param {string} token
+     * @returns {TokenPayload}
+     */
+    verifyAccessToken(token) {
         try {
-            // 检查登录失败次数
-            await this.checkLoginAttempts(email, ipAddress);
+            return jwt.verify(token, JWT_SECRET);
+        }
+        catch (error) {
+            if (error.name === 'TokenExpiredError') {
+                throw AppError.unauthorized('Token expired', ErrorCode.TOKEN_EXPIRED);
+            }
+            else if (error.name === 'JsonWebTokenError') {
+                throw AppError.unauthorized('Invalid token', ErrorCode.INVALID_TOKEN);
+            }
+            throw AppError.unauthorized('Authentication failed', ErrorCode.UNAUTHORIZED);
+        }
+    },
+    /**
+     * 验证刷新令牌
+     * @param {string} token
+     * @returns {Object}
+     */
+    verifyRefreshToken(token) {
+        try {
+            return jwt.verify(token, JWT_REFRESH_SECRET);
+        }
+        catch (error) {
+            if (error.name === 'TokenExpiredError') {
+                throw AppError.unauthorized('Refresh token expired', ErrorCode.TOKEN_EXPIRED);
+            }
+            else if (error.name === 'JsonWebTokenError') {
+                throw AppError.unauthorized('Invalid refresh token', ErrorCode.INVALID_TOKEN);
+            }
+            throw AppError.unauthorized('Authentication failed', ErrorCode.UNAUTHORIZED);
+        }
+    },
+    /**
+     * 存储刷新令牌
+     * @param {string} userId
+     * @param {string} token
+     * @returns {Promise<void>}
+     */
+    async storeRefreshToken(userId, token) {
+        const key = `refresh_token:${userId}`;
+        await redis.set(key, token, 'EX', 7 * 24 * 60 * 60); // 7天过期
+    },
+    /**
+     * 获取存储的刷新令牌
+     * @param {string} userId
+     * @returns {Promise<string|null>}
+     */
+    async getStoredRefreshToken(userId) {
+        const key = `refresh_token:${userId}`;
+        return await redis.get(key);
+    },
+    /**
+     * 删除刷新令牌
+     * @param {string} userId
+     * @returns {Promise<void>}
+     */
+    async deleteRefreshToken(userId) {
+        const key = `refresh_token:${userId}`;
+        await redis.del(key);
+    },
+    /**
+     * 用户登录
+     * @param {string} email
+     * @param {string} password
+     * @param {string} ipAddress
+     * @returns {Promise<{user: Object, accessToken: string, refreshToken: string}>}
+     */
+    async login(email, password, ipAddress) {
+        try {
+            // 检查登录尝试次数
+            const attemptsKey = `login_attempts:${email}:${ipAddress}`;
+            const attempts = await redis.get(attemptsKey);
+            if (attempts && parseInt(attempts) >= 5) {
+                throw AppError.tooManyRequests('Too many login attempts. Please try again later.', ErrorCode.TOO_MANY_REQUESTS);
+            }
             // 查找用户
-            const result = await database_1.pool.query(`SELECT u.id, u.email, u.password_hash, u.first_name, u.last_name, 
-                u.status, u.locked_at, ARRAY_AGG(r.role_name) as roles
-        FROM users u
-        LEFT JOIN user_roles ur ON u.id = ur.user_id
-        LEFT JOIN roles r ON ur.role_id = r.id
-        WHERE u.email = $1
-        GROUP BY u.id`, [email.toLowerCase()]);
+            const result = await pool.query(`SELECT u.id, u.email, u.password_hash, u.status, 
+                ARRAY_AGG(r.role_name) as roles 
+         FROM users u 
+         LEFT JOIN user_roles ur ON u.id = ur.user_id 
+         LEFT JOIN roles r ON ur.role_id = r.id 
+         WHERE u.email = $1 
+         GROUP BY u.id`, [email.toLowerCase()]);
             if (result.rows.length === 0) {
                 await this.recordFailedLogin(email, ipAddress);
-                throw app_error_1.AppError.unauthorized('Invalid credentials', error_codes_1.ErrorCode.UNAUTHORIZED);
+                throw AppError.unauthorized('Invalid credentials', ErrorCode.UNAUTHORIZED);
             }
             const user = result.rows[0];
-            // 检查账户状态
-            if (user.status === 'locked') {
-                throw app_error_1.AppError.forbidden('Account is locked', error_codes_1.ErrorCode.FORBIDDEN);
-            }
-            if (user.status === 'inactive') {
-                throw app_error_1.AppError.forbidden('Account is inactive', error_codes_1.ErrorCode.FORBIDDEN);
+            // 检查用户状态
+            if (user.status !== 'active') {
+                await this.recordFailedLogin(email, ipAddress);
+                throw AppError.unauthorized('Account is not active', ErrorCode.ACCOUNT_INACTIVE);
             }
             // 验证密码
             const isPasswordValid = await bcrypt.compare(password, user.password_hash);
             if (!isPasswordValid) {
                 await this.recordFailedLogin(email, ipAddress);
-                throw app_error_1.AppError.unauthorized('Invalid credentials', error_codes_1.ErrorCode.UNAUTHORIZED);
+                throw AppError.unauthorized('Invalid credentials', ErrorCode.UNAUTHORIZED);
             }
-            // 清除失败记录
+            // 清除登录尝试记录
             await this.clearLoginAttempts(email, ipAddress);
             // 生成令牌
             const accessToken = this.generateAccessToken({
                 userId: user.id,
                 email: user.email,
-                roles: user.roles || ['user'],
+                roles: user.roles || []
             });
-            const refreshToken = this.generateRefreshToken({
-                userId: user.id,
-                email: user.email,
-                roles: user.roles || ['user'],
-            });
+            const refreshToken = this.generateRefreshToken(user.id);
             // 存储刷新令牌
             await this.storeRefreshToken(user.id, refreshToken);
-            // 更新最后登录时间
-            await database_1.pool.query(`UPDATE users 
-        SET last_login_at = NOW(), last_login_ip = $1, login_count = login_count + 1
-        WHERE id = $2`, [ipAddress, user.id]);
-            // 记录登录历史
-            await database_1.pool.query(`INSERT INTO user_login_history (user_id, ip_address)
-        VALUES ($1, $2)`, [user.id, ipAddress]);
-            logger_1.logger.info('User logged in successfully', { userId: user.id, email });
-            return {
-                user: {
-                    id: user.id,
-                    email: user.email,
-                    firstName: user.first_name,
-                    lastName: user.last_name,
-                    status: user.status,
-                    roles: user.roles,
-                },
-                accessToken,
-                refreshToken,
-            };
+            // 删除密码哈希，不返回给客户端
+            delete user.password_hash;
+            logger.info('User logged in successfully', { userId: user.id, email: user.email });
+            return { user, accessToken, refreshToken };
         }
         catch (error) {
-            logger_1.logger.error('Login failed', { error, email });
+            logger.warn('Login failed', { email, ipAddress, error: error.message });
             throw error;
         }
-    }
-    // 刷新令牌
-    static async refreshToken(refreshToken) {
+    },
+    /**
+     * 用户登出
+     * @param {string} userId
+     * @returns {Promise<void>}
+     */
+    async logout(userId) {
+        try {
+            await this.deleteRefreshToken(userId);
+            logger.info('User logged out successfully', { userId });
+        }
+        catch (error) {
+            logger.error('Logout failed', { userId, error: error.message });
+            throw error;
+        }
+    },
+    /**
+     * 刷新访问令牌
+     * @param {string} refreshToken
+     * @returns {Promise<{accessToken: string, refreshToken: string}>}
+     */
+    async refreshAccessToken(refreshToken) {
         try {
             // 验证刷新令牌
-            const payload = this.verifyRefreshToken(refreshToken);
-            // 检查令牌是否有效（未被撤销）
-            const storedToken = await redis_1.redis.get(`refresh_token:${payload.userId}`);
+            const decoded = this.verifyRefreshToken(refreshToken);
+            const userId = decoded.userId;
+            // 检查令牌是否与存储的匹配
+            const storedToken = await this.getStoredRefreshToken(userId);
             if (!storedToken || storedToken !== refreshToken) {
-                throw app_error_1.AppError.unauthorized('Invalid refresh token', error_codes_1.ErrorCode.INVALID_TOKEN);
+                throw AppError.unauthorized('Invalid refresh token', ErrorCode.INVALID_TOKEN);
             }
-            // 获取用户角色
-            const roleResult = await database_1.pool.query(`SELECT ARRAY_AGG(r.role_name) as roles
-        FROM user_roles ur
-        JOIN roles r ON ur.role_id = r.id
-        WHERE ur.user_id = $1`, [payload.userId]);
-            const roles = roleResult.rows[0]?.roles || ['user'];
-            // 生成新的令牌
-            const newAccessToken = this.generateAccessToken({
-                userId: payload.userId,
-                email: payload.email,
-                roles,
-            });
-            const newRefreshToken = this.generateRefreshToken({
-                userId: payload.userId,
-                email: payload.email,
-                roles,
-            });
-            // 存储新的刷新令牌
-            await this.storeRefreshToken(payload.userId, newRefreshToken);
-            logger_1.logger.info('Token refreshed successfully', { userId: payload.userId });
-            return {
-                accessToken: newAccessToken,
-                refreshToken: newRefreshToken,
-            };
-        }
-        catch (error) {
-            logger_1.logger.error('Token refresh failed', { error });
-            throw error;
-        }
-    }
-    // 登出
-    static async logout(userId, refreshToken) {
-        try {
-            // 撤销特定令牌或所有令牌
-            if (refreshToken) {
-                // 验证令牌是否属于该用户
-                const payload = this.verifyRefreshToken(refreshToken);
-                if (payload.userId !== userId) {
-                    throw app_error_1.AppError.unauthorized('Invalid refresh token', error_codes_1.ErrorCode.INVALID_TOKEN);
-                }
-                // 删除特定令牌
-                await redis_1.redis.del(`refresh_token:${userId}`);
-            }
-            else {
-                // 删除所有令牌（强制登出所有设备）
-                await redis_1.redis.del(`refresh_token:${userId}`);
-            }
-            logger_1.logger.info('User logged out', { userId });
-        }
-        catch (error) {
-            logger_1.logger.error('Logout failed', { error, userId });
-            throw error;
-        }
-    }
-    // 请求密码重置
-    static async requestPasswordReset(email) {
-        try {
-            // 查找用户
-            const result = await database_1.pool.query('SELECT id, email FROM users WHERE email = $1', [email.toLowerCase()]);
+            // 获取用户信息和角色
+            const result = await pool.query(`SELECT u.id, u.email, ARRAY_AGG(r.role_name) as roles 
+         FROM users u 
+         LEFT JOIN user_roles ur ON u.id = ur.user_id 
+         LEFT JOIN roles r ON ur.role_id = r.id 
+         WHERE u.id = $1 
+         GROUP BY u.id`, [userId]);
             if (result.rows.length === 0) {
-                // 不透露用户是否存在
-                logger_1.logger.info('Password reset requested for non-existent email', { email });
-                return;
+                throw AppError.unauthorized('User not found', ErrorCode.USER_NOT_FOUND);
             }
             const user = result.rows[0];
-            // 生成重置令牌
-            const resetToken = crypto.randomBytes(32).toString('hex');
-            const hashedToken = await bcrypt.hash(resetToken, 10);
-            const expiresAt = new Date(Date.now() + 3600000); // 1小时后过期
-            // 存储重置令牌
-            await database_1.pool.query(`INSERT INTO password_resets (user_id, token, expires_at)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (user_id) DO UPDATE
-        SET token = $2, expires_at = $3, updated_at = NOW()`, [user.id, hashedToken, expiresAt]);
-            // 这里应该发送邮件，但省略了实际的邮件发送逻辑
-            logger_1.logger.info('Password reset token created', { userId: user.id, email });
+            // 生成新令牌
+            const newAccessToken = this.generateAccessToken({
+                userId: user.id,
+                email: user.email,
+                roles: user.roles || []
+            });
+            const newRefreshToken = this.generateRefreshToken(user.id);
+            // 存储新的刷新令牌，替换旧的
+            await this.storeRefreshToken(userId, newRefreshToken);
+            logger.info('Access token refreshed', { userId });
+            return { accessToken: newAccessToken, refreshToken: newRefreshToken };
         }
         catch (error) {
-            logger_1.logger.error('Password reset request failed', { error, email });
+            logger.warn('Token refresh failed', { error: error.message });
             throw error;
         }
-    }
-    // 重置密码
-    static async resetPassword(token, password) {
-        try {
-            // 查找有效的重置令牌
-            const result = await database_1.pool.query(`SELECT pr.user_id, pr.token, pr.expires_at, u.email
-        FROM password_resets pr
-        JOIN users u ON pr.user_id = u.id
-        WHERE pr.expires_at > NOW()
-        ORDER BY pr.created_at DESC
-        LIMIT 1`);
-            if (result.rows.length === 0) {
-                throw app_error_1.AppError.badRequest('Invalid or expired reset token', error_codes_1.ErrorCode.VALIDATION_ERROR);
-            }
-            const { user_id: userId, token: hashedToken, email } = result.rows[0];
-            // 验证令牌
-            const isValid = await bcrypt.compare(token, hashedToken);
-            if (!isValid) {
-                throw app_error_1.AppError.badRequest('Invalid reset token', error_codes_1.ErrorCode.VALIDATION_ERROR);
-            }
-            // 加密新密码
-            const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-            // 开始事务
-            const client = await database_1.pool.connect();
-            try {
-                await client.query('BEGIN');
-                // 更新密码
-                await client.query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [passwordHash, userId]);
-                // 删除重置令牌
-                await client.query('DELETE FROM password_resets WHERE user_id = $1', [userId]);
-                // 撤销所有会话
-                await redis_1.redis.del(`refresh_token:${userId}`);
-                await client.query('COMMIT');
-                logger_1.logger.info('Password reset successfully', { userId, email });
-            }
-            catch (error) {
-                await client.query('ROLLBACK');
-                throw error;
-            }
-            finally {
-                client.release();
-            }
-        }
-        catch (error) {
-            logger_1.logger.error('Password reset failed', { error });
-            throw error;
-        }
-    }
-    // 修改密码
-    static async changePassword(userId, currentPassword, newPassword) {
-        try {
-            // 获取当前密码哈希
-            const result = await database_1.pool.query('SELECT password_hash FROM users WHERE id = $1', [userId]);
-            if (result.rows.length === 0) {
-                throw app_error_1.AppError.notFound('User not found', error_codes_1.ErrorCode.NOT_FOUND);
-            }
-            const currentHash = result.rows[0].password_hash;
-            // 验证当前密码
-            const isValid = await bcrypt.compare(currentPassword, currentHash);
-            if (!isValid) {
-                throw app_error_1.AppError.unauthorized('Current password is incorrect', error_codes_1.ErrorCode.UNAUTHORIZED);
-            }
-            // 加密新密码
-            const newHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
-            // 更新密码
-            await database_1.pool.query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [newHash, userId]);
-            // 撤销所有现有会话（可选）
-            await redis_1.redis.del(`refresh_token:${userId}`);
-            logger_1.logger.info('Password changed successfully', { userId });
-        }
-        catch (error) {
-            logger_1.logger.error('Password change failed', { error, userId });
-            throw error;
-        }
-    }
-    // 生成访问令牌
-    static generateAccessToken(payload) {
-        return jwt.sign(payload, JWT_SECRET, {
-            expiresIn: ACCESS_TOKEN_EXPIRY,
-        });
-    }
-    // 生成刷新令牌
-    static generateRefreshToken(payload) {
-        return jwt.sign(payload, JWT_REFRESH_SECRET, {
-            expiresIn: REFRESH_TOKEN_EXPIRY,
-        });
-    }
-    // 验证访问令牌
-    static verifyAccessToken(token) {
-        try {
-            return jwt.verify(token, JWT_SECRET);
-        }
-        catch (error) {
-            throw app_error_1.AppError.unauthorized('Invalid or expired access token', error_codes_1.ErrorCode.INVALID_TOKEN);
-        }
-    }
-    // 验证刷新令牌
-    static verifyRefreshToken(token) {
-        try {
-            return jwt.verify(token, JWT_REFRESH_SECRET);
-        }
-        catch (error) {
-            throw app_error_1.AppError.unauthorized('Invalid or expired refresh token', error_codes_1.ErrorCode.INVALID_TOKEN);
-        }
-    }
-    // 存储刷新令牌
-    static async storeRefreshToken(userId, refreshToken) {
-        // 存储令牌，设置过期时间（与令牌过期时间匹配）
-        await redis_1.redis.set(`refresh_token:${userId}`, refreshToken, 'EX', 7 * 24 * 60 * 60);
-    }
-    // 检查登录尝试次数
-    static async checkLoginAttempts(email, ipAddress) {
+    },
+    /**
+     * 记录失败的登录尝试
+     * @param {string} email
+     * @param {string} ipAddress
+     * @returns {Promise<void>}
+     */
+    async recordFailedLogin(email, ipAddress) {
         const key = `login_attempts:${email}:${ipAddress}`;
-        const attempts = await redis_1.redis.get(key);
-        if (attempts && parseInt(attempts) >= 5) {
-            // 检查是否超过5次失败尝试
-            const lockKey = `login_lock:${email}:${ipAddress}`;
-            const lock = await redis_1.redis.get(lockKey);
-            if (!lock) {
-                // 设置15分钟锁定
-                await redis_1.redis.set(lockKey, 'locked', 'EX', 15 * 60);
-            }
-            throw app_error_1.AppError.badRequest('Too many login attempts. Please try again later.', error_codes_1.ErrorCode.BUSINESS_ERROR);
-        }
-    }
-    // 记录失败的登录尝试
-    static async recordFailedLogin(email, ipAddress) {
-        const key = `login_attempts:${email}:${ipAddress}`;
-        const attempts = await redis_1.redis.get(key);
+        const attempts = await redis.get(key);
         if (attempts) {
-            await redis_1.redis.incr(key);
+            await redis.incr(key);
         }
         else {
-            await redis_1.redis.set(key, '1', 'EX', 60 * 60); // 1小时后过期
+            await redis.set(key, '1', 'EX', 60 * 60); // 1小时后过期
         }
-    }
-    // 清除登录尝试记录
-    static async clearLoginAttempts(email, ipAddress) {
+    },
+    /**
+     * 清除登录尝试记录
+     * @param {string} email
+     * @param {string} ipAddress
+     * @returns {Promise<void>}
+     */
+    async clearLoginAttempts(email, ipAddress) {
         const key = `login_attempts:${email}:${ipAddress}`;
-        await redis_1.redis.del(key);
+        await redis.del(key);
     }
-}
-exports.AuthService = AuthService;
+};
+module.exports = AuthService;

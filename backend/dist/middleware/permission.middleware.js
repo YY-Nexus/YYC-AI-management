@@ -8,7 +8,7 @@ function requirePermission(action, resource) {
     return async (req, res, next) => {
         try {
             // 检查用户是否已认证
-            if (!req.user || !req.user.id) {
+            if (!req.user || !req.user.userId) {
                 return res.status(401).json({
                     success: false,
                     error: {
@@ -17,7 +17,7 @@ function requirePermission(action, resource) {
                     },
                 });
             }
-            const userId = req.user.id;
+            const userId = req.user.userId;
             const resourceId = req.params.id; // 可选的资源ID
             // 检查权限
             const hasPermission = await permission_service_1.PermissionService.checkPermission(userId, action, resource, resourceId);
@@ -41,7 +41,7 @@ function requirePermission(action, resource) {
             next();
         }
         catch (error) {
-            logger_1.logger.error("Permission check error", { error, userId: req.user?.id });
+            logger_1.logger.error("Permission check error", { error, userId: req.user?.userId });
             return res.status(500).json({
                 success: false,
                 error: {

@@ -4,78 +4,32 @@ import { AppError } from '../utils/app-error';
 import { ErrorCode } from '../constants/error-codes';
 
 // 安全事件类型定义
-export enum SecurityEventType {
-  USER_LOGIN = 'USER_LOGIN',
-  USER_LOGOUT = 'USER_LOGOUT',
-  PASSWORD_CHANGE = 'PASSWORD_CHANGE',
-  PASSWORD_RESET = 'PASSWORD_RESET',
-  FAILED_LOGIN = 'FAILED_LOGIN',
-  UNAUTHORIZED_ACCESS = 'UNAUTHORIZED_ACCESS',
-  PRIVILEGE_ESCALATION = 'PRIVILEGE_ESCALATION',
-  ACCOUNT_LOCKED = 'ACCOUNT_LOCKED',
-  ACCOUNT_UNLOCKED = 'ACCOUNT_UNLOCKED',
-  API_KEY_CREATED = 'API_KEY_CREATED',
-  API_KEY_REVOKED = 'API_KEY_REVOKED',
-  SENSITIVE_DATA_ACCESS = 'SENSITIVE_DATA_ACCESS',
-  CONFIGURATION_CHANGE = 'CONFIGURATION_CHANGE',
-  SECURITY_POLICY_VIOLATION = 'SECURITY_POLICY_VIOLATION',
-}
+const SecurityEventType = {
+  USER_LOGIN: 'USER_LOGIN',
+  USER_LOGOUT: 'USER_LOGOUT',
+  PASSWORD_CHANGE: 'PASSWORD_CHANGE',
+  PASSWORD_RESET: 'PASSWORD_RESET',
+  FAILED_LOGIN: 'FAILED_LOGIN',
+  UNAUTHORIZED_ACCESS: 'UNAUTHORIZED_ACCESS',
+  PRIVILEGE_ESCALATION: 'PRIVILEGE_ESCALATION',
+  ACCOUNT_LOCKED: 'ACCOUNT_LOCKED',
+  ACCOUNT_UNLOCKED: 'ACCOUNT_UNLOCKED',
+  API_KEY_CREATED: 'API_KEY_CREATED',
+  API_KEY_REVOKED: 'API_KEY_REVOKED',
+  SENSITIVE_DATA_ACCESS: 'SENSITIVE_DATA_ACCESS',
+  CONFIGURATION_CHANGE: 'CONFIGURATION_CHANGE',
+  SECURITY_POLICY_VIOLATION: 'SECURITY_POLICY_VIOLATION',
+};
 
 // 安全日志严重程度
-export enum SecuritySeverity {
-  LOW = 'LOW',
-  MEDIUM = 'MEDIUM',
-  HIGH = 'HIGH',
-  CRITICAL = 'CRITICAL',
-}
+const SecuritySeverity = {
+  LOW: 'LOW',
+  MEDIUM: 'MEDIUM',
+  HIGH: 'HIGH',
+  CRITICAL: 'CRITICAL',
+};
 
-// 登录历史记录接口
-export interface LoginHistoryRecord {
-  id?: string;
-  user_id: string;
-  username: string;
-  ip_address: string;
-  user_agent: string;
-  success: boolean;
-  reason?: string;
-  timestamp?: Date;
-}
-
-// 用户活动日志接口
-export interface UserActivityLog {
-  id?: string;
-  user_id: string;
-  username: string;
-  event_type: SecurityEventType;
-  details: Record<string, any>;
-  ip_address: string;
-  timestamp?: Date;
-}
-
-// 安全警报接口
-export interface SecurityAlert {
-  id?: string;
-  event_type: SecurityEventType;
-  severity: SecuritySeverity;
-  details: Record<string, any>;
-  user_id?: string;
-  username?: string;
-  ip_address?: string;
-  is_resolved: boolean;
-  created_at?: Date;
-  resolved_at?: Date;
-}
-
-// 安全统计数据接口
-export interface SecurityStats {
-  total_logins: number;
-  failed_logins: number;
-  active_alerts: number;
-  critical_alerts: number;
-  recent_security_events: number;
-}
-
-export class SecurityLogService {
+class SecurityLogService {
   constructor() {
     logger.info('Security Log Service initialized');
   }
@@ -84,13 +38,8 @@ export class SecurityLogService {
    * 记录用户登录尝试
    */
   async logLoginAttempt(
-    user_id: string,
-    username: string,
-    ip_address: string,
-    user_agent: string,
-    success: boolean,
-    reason?: string
-  ): Promise<LoginHistoryRecord> {
+    user_id: string, username: string, ip_address: string, user_agent: string, success: boolean, reason: string
+  ) {
     try {
       logger.info('Logging login attempt', { username, success });
 
@@ -101,7 +50,7 @@ export class SecurityLogService {
         [user_id, username, ip_address, user_agent, success, reason]
       );
 
-      const record = result.rows[0] as LoginHistoryRecord;
+      const record = result.rows[0];
       logger.info('Login attempt logged successfully', { record_id: record.id });
 
       // 如果登录失败，创建安全警报
@@ -110,7 +59,9 @@ export class SecurityLogService {
           SecurityEventType.FAILED_LOGIN,
           SecuritySeverity.MEDIUM,
           { username, reason, ip_address, user_agent },
-          user_id
+          user_id,
+          username,
+          ip_address
         );
       }
 
@@ -125,12 +76,8 @@ export class SecurityLogService {
    * 记录用户活动
    */
   async logUserActivity(
-    user_id: string,
-    username: string,
-    event_type: SecurityEventType,
-    details: Record<string, any>,
-    ip_address: string
-  ): Promise<UserActivityLog> {
+    user_id: string, username: string, event_type: string, details: object, ip_address: string
+  ) {
     try {
       logger.info('Logging user activity', { username, event_type });
 
@@ -144,10 +91,10 @@ export class SecurityLogService {
         [user_id, username, event_type, serializedDetails, ip_address]
       );
 
-      const log = result.rows[0] as UserActivityLog;
+      const log = result.rows[0];
       
       // 解析details为对象
-      log.details = JSON.parse(log.details as any);
+      log.details = JSON.parse(log.details);
       
       logger.info('User activity logged successfully', { log_id: log.id });
 
@@ -179,13 +126,8 @@ export class SecurityLogService {
    * 创建安全警报
    */
   async createSecurityAlert(
-    event_type: SecurityEventType,
-    severity: SecuritySeverity,
-    details: Record<string, any>,
-    user_id?: string,
-    username?: string,
-    ip_address?: string
-  ): Promise<SecurityAlert> {
+    event_type: string, severity: string, details: object, user_id: string, username: string, ip_address: string
+  ) {
     try {
       logger.info('Creating security alert', { event_type, severity });
 
@@ -199,10 +141,10 @@ export class SecurityLogService {
         [event_type, severity, serializedDetails, user_id, username, ip_address]
       );
 
-      const alert = result.rows[0] as SecurityAlert;
+      const alert = result.rows[0];
       
       // 解析details为对象
-      alert.details = JSON.parse(alert.details as any);
+      alert.details = JSON.parse(alert.details);
       
       logger.info('Security alert created successfully', { alert_id: alert.id });
 
@@ -228,7 +170,7 @@ export class SecurityLogService {
   /**
    * 解决安全警报
    */
-  async resolveSecurityAlert(alert_id: string, resolution_notes?: string): Promise<SecurityAlert> {
+  async resolveSecurityAlert(alert_id: string, resolution_notes: string) {
     try {
       logger.info('Resolving security alert', { alert_id });
 
@@ -246,10 +188,10 @@ export class SecurityLogService {
         throw new Error('Security alert not found');
       }
 
-      const alert = result.rows[0] as SecurityAlert;
+      const alert = result.rows[0];
       
       // 解析details为对象
-      alert.details = JSON.parse(alert.details as any);
+      alert.details = JSON.parse(alert.details);
       
       logger.info('Security alert resolved successfully', { alert_id });
       return alert;
@@ -262,7 +204,7 @@ export class SecurityLogService {
   /**
    * 获取安全统计信息
    */
-  async getSecurityStats(days: number = 7): Promise<SecurityStats> {
+  async getSecurityStats(days: number = 7) {
     try {
       logger.info('Fetching security statistics', { days });
 
@@ -295,7 +237,7 @@ export class SecurityLogService {
       const alertStats = alertStatsResult.rows[0];
       const eventsStats = eventsResult.rows[0];
 
-      const stats: SecurityStats = {
+      const stats = {
         total_logins: parseInt(loginStats.total_logins, 10) || 0,
         failed_logins: parseInt(loginStats.failed_logins, 10) || 0,
         active_alerts: parseInt(alertStats.active_alerts, 10) || 0,
@@ -314,7 +256,7 @@ export class SecurityLogService {
   /**
    * 获取用户登录历史
    */
-  async getUserLoginHistory(user_id: string, limit: number = 50): Promise<LoginHistoryRecord[]> {
+  async getUserLoginHistory(user_id: string, limit: number = 50) {
     try {
       logger.info('Fetching user login history', { user_id, limit });
 
@@ -328,7 +270,7 @@ export class SecurityLogService {
       );
 
       logger.info('User login history fetched successfully', { user_id, count: result.rows.length });
-      return result.rows as LoginHistoryRecord[];
+      return result.rows;
     } catch (error) {
       logger.error('Failed to fetch user login history', { user_id, error });
       throw AppError.internal('Failed to fetch user login history', ErrorCode.DATABASE_ERROR);
@@ -338,14 +280,14 @@ export class SecurityLogService {
   /**
    * 获取未解决的安全警报
    */
-  async getUnresolvedAlerts(severity?: SecuritySeverity, limit: number = 100): Promise<SecurityAlert[]> {
+  async getUnresolvedAlerts(severity: string, limit: number = 100) {
     try {
       logger.info('Fetching unresolved security alerts', { severity, limit });
 
       let query = `SELECT id, event_type, severity, details, user_id, username, ip_address, is_resolved, created_at, resolved_at
                   FROM security_alerts
                   WHERE is_resolved = false`;
-      const params: any[] = [];
+      const params = [];
 
       if (severity) {
         query += ` AND severity = $1`;
@@ -363,7 +305,7 @@ export class SecurityLogService {
       const alerts = result.rows.map((row: any) => ({
         ...row,
         details: JSON.parse(row.details)
-      })) as SecurityAlert[];
+      }));
 
       logger.info('Unresolved security alerts fetched successfully', { count: alerts.length });
       return alerts;
@@ -376,7 +318,7 @@ export class SecurityLogService {
   /**
    * 检测可疑登录行为
    */
-  async detectSuspiciousLogins(user_id: string): Promise<boolean> {
+  async detectSuspiciousLogins(user_id: string) {
     try {
       logger.info('Detecting suspicious logins', { user_id });
 
@@ -408,5 +350,12 @@ export class SecurityLogService {
   }
 }
 
-// 创建单例实例
-export const securityLogService = new SecurityLogService();
+// 创建并导出单例实例
+const securityLogService = new SecurityLogService();
+
+export {
+  SecurityLogService,
+  securityLogService,
+  SecurityEventType,
+  SecuritySeverity
+};

@@ -258,4 +258,4 @@ router.patch("/exceptions/:id/resolve", (0, auth_middleware_1.authorize)(["recon
         next(error);
     }
 });
-exports.default = router;
+module.exports = router;

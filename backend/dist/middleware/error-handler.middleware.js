@@ -41,7 +41,7 @@ function errorHandler(err, req, res, next) {
                 referer: req.get("referer"),
                 "x-forwarded-for": req.get("x-forwarded-for"),
             },
-            userId: req.user?.id,
+            userId: req.user?.userId,
         },
     };
     // 数据库错误特殊处理

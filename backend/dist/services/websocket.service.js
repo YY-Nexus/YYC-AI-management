@@ -1,382 +1,500 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.WebSocketService = void 0;
-const socket_io_1 = require("socket.io");
-const jwt = __importStar(require("jsonwebtoken"));
-const logger_1 = require("../config/logger");
-const redis_1 = require("../config/redis");
+const redis = require('../config/redis');
+const { logger } = require('../config/logger');
+const { AppError } = require('../utils/app-error');
+const { ErrorCode } = require('../constants/error-codes');
 class WebSocketService {
-    constructor(httpServer) {
+    constructor(server) {
+        this.logger = logger;
+        this.io = null;
         this.clients = new Map();
-        this.heartbeatInterval = null;
-        this.HEARTBEAT_INTERVAL = 30000; // 30 seconds
-        this.CLIENT_TIMEOUT = 60000; // 60 seconds
-        this.io = new socket_io_1.Server(httpServer, {
-            cors: {
-                origin: process.env.FRONTEND_BASE_URL || "http://localhost:3000",
-                methods: ["GET", "POST"],
-                credentials: true,
-            },
-            transports: ["websocket", "polling"],
-            pingTimeout: 60000,
-            pingInterval: 25000,
-        });
-        this.setupMiddleware();
-        this.setupEventHandlers();
-        this.startHeartbeatMonitor();
+        this.userSockets = new Map();
+        this.channels = new Map();
+        this.isInitialized = false;
+        this.redisClient = null;
+        // 如果提供了server参数，直接初始化
+        if (server) {
+            this.init(server);
+        }
     }
     /**
-     * 设置认证中间件
+     * 初始化WebSocket服务
      */
-    setupMiddleware() {
-        this.io.use(async (socket, next) => {
-            try {
-                const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.split(" ")[1];
-                if (!token) {
-                    logger_1.logger.warn("WebSocket connection rejected: No token provided", { socketId: socket.id });
-                    return next(new Error("Authentication required"));
-                }
-                // 验证 JWT token
-                const decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
-                // 检查 Redis 中的 token 黑名单
-                const isBlacklisted = await redis_1.redis.get(`blacklist:${token}`);
-                if (isBlacklisted) {
-                    logger_1.logger.warn("WebSocket connection rejected: Token blacklisted", {
-                        socketId: socket.id,
-                        userId: decoded.userId,
-                    });
-                    return next(new Error("Token is invalid"));
-                }
-                // 将用户信息附加到 socket
-                socket.data.userId = decoded.userId;
-                socket.data.username = decoded.username;
-                socket.data.roles = decoded.roles || [];
-                socket.data.departments = decoded.departments || [];
-                logger_1.logger.info("WebSocket authentication successful", {
+    init(server) {
+        try {
+            // 导入socket.io
+            const { Server } = require('socket.io');
+            this.io = new Server(server, {
+                cors: {
+                    origin: '*',
+                    methods: ['GET', 'POST'],
+                    credentials: true
+                },
+                transports: ['websocket', 'polling'],
+                allowEIO3: true
+            });
+            this.setupListeners();
+            this.setupRedisListeners();
+            this.isInitialized = true;
+            this.logger.info('WebSocket service initialized successfully');
+        }
+        catch (error) {
+            this.logger.error('Failed to initialize WebSocket service', { error: error.message });
+            throw new Error('Failed to initialize WebSocket service');
+        }
+    }
+    /**
+     * 设置WebSocket监听器
+     */
+    setupListeners() {
+        // 连接事件
+        this.io.on('connection', (socket) => {
+            this.logger.info('New WebSocket connection established', { socketId: socket.id });
+            // 存储客户端信息
+            this.clients.set(socket.id, {
+                socket,
+                userId: null,
+                authenticated: false,
+                connectedAt: new Date()
+            });
+            // 认证事件
+            socket.on('authenticate', (token) => {
+                this.handleAuthentication(socket, token);
+            });
+            // 消息事件
+            socket.on('message', (message) => {
+                this.handleMessage(socket, message);
+            });
+            // 订阅频道事件
+            socket.on('subscribe', (data) => {
+                this.handleSubscribe(socket, data);
+            });
+            // 断开连接事件
+            socket.on('disconnect', (reason) => {
+                this.handleDisconnect(socket, reason);
+            });
+            // 错误事件
+            socket.on('error', (error) => {
+                this.logger.error('WebSocket error', {
                     socketId: socket.id,
-                    userId: decoded.userId,
-                    username: decoded.username,
+                    error: error.message || 'Unknown error'
                 });
-                next();
+            });
+        });
+    }
+    /**
+     * 设置Redis监听器
+     */
+    setupRedisListeners() {
+        try {
+            // 获取Redis客户端
+            this.redisClient = redis.client;
+            // 监听Redis消息
+            this.redisClient.on('message', (channel, message) => {
+                this.handleRedisMessage(channel, message);
+            });
+            // 监听Redis错误
+            this.redisClient.on('error', (error) => {
+                this.logger.error('Redis client error in WebSocket service', {
+                    error: error.message || 'Unknown Redis error'
+                });
+            });
+        }
+        catch (error) {
+            this.logger.error('Failed to setup Redis listeners', { error: error.message });
+        }
+    }
+    /**
+     * 处理认证
+     */
+    async handleAuthentication(socket, token) {
+        try {
+            if (!token) {
+                socket.emit('auth_error', { message: 'Authentication token is required' });
+                return;
+            }
+            // 验证token逻辑
+            let userId = null;
+            try {
+                // 实际项目中这里应该调用auth服务验证token
+                // const decoded = await authService.verifyToken(token);
+                // userId = decoded.userId;
+                // 模拟验证成功
+                userId = 'user_' + Math.random().toString(36).substring(2, 10);
             }
             catch (error) {
-                logger_1.logger.error("WebSocket authentication failed", {
-                    error: error instanceof Error ? error.message : "Unknown error",
-                    socketId: socket.id,
-                });
-                next(new Error("Authentication failed"));
+                socket.emit('auth_error', { message: 'Invalid or expired token' });
+                this.logger.warn('WebSocket authentication failed', { socketId: socket.id });
+                return;
             }
-        });
+            // 更新客户端信息
+            const clientInfo = this.clients.get(socket.id);
+            if (clientInfo) {
+                clientInfo.userId = userId;
+                clientInfo.authenticated = true;
+                // 存储用户的socket连接
+                if (!this.userSockets.has(userId)) {
+                    this.userSockets.set(userId, new Set());
+                }
+                this.userSockets.get(userId).add(socket.id);
+                // 发送认证成功消息
+                socket.emit('auth_success', { userId });
+                this.logger.info('WebSocket client authenticated', { socketId: socket.id, userId });
+            }
+        }
+        catch (error) {
+            this.logger.error('Error during authentication', { error: error.message });
+            socket.emit('auth_error', { message: 'Authentication failed' });
+        }
     }
     /**
-     * 设置事件处理器
+     * 处理消息
      */
-    setupEventHandlers() {
-        this.io.on("connection", (socket) => {
-            this.handleConnection(socket);
-        });
-    }
-    /**
-     * 处理新连接
-     */
-    handleConnection(socket) {
-        const client = {
-            id: socket.id,
-            userId: socket.data.userId,
-            roles: socket.data.roles,
-            departments: socket.data.departments,
-            connectedAt: new Date().toISOString(),
-            lastHeartbeat: new Date().toISOString(),
-        };
-        this.clients.set(socket.id, client);
-        logger_1.logger.info("WebSocket client connected", {
-            socketId: socket.id,
-            userId: client.userId,
-            totalClients: this.clients.size,
-        });
-        // 将客户端加入用户专属房间
-        socket.join(`user:${client.userId}`);
-        // 根据角色加入房间
-        client.roles.forEach((role) => {
-            socket.join(`role:${role}`);
-        });
-        // 根据部门加入房间
-        client.departments.forEach((dept) => {
-            socket.join(`department:${dept}`);
-        });
-        // 发送欢迎消息
-        socket.emit("connected", {
-            message: "Connected to YanYu Cloud³",
-            clientId: socket.id,
-            timestamp: new Date().toISOString(),
-        });
-        // 心跳处理
-        socket.on("heartbeat", (data) => {
-            this.handleHeartbeat(socket.id, data);
-        });
-        // 订阅频道
-        socket.on("subscribe", (data) => {
-            this.handleSubscribe(socket, data);
-        });
-        // 取消订阅
-        socket.on("unsubscribe", (data) => {
-            this.handleUnsubscribe(socket, data);
-        });
-        // 断开连接
-        socket.on("disconnect", (reason) => {
-            this.handleDisconnect(socket, reason);
-        });
-        // 错误处理
-        socket.on("error", (error) => {
-            logger_1.logger.error("WebSocket error", {
+    async handleMessage(socket, message) {
+        try {
+            const clientInfo = this.clients.get(socket.id);
+            if (!clientInfo || !clientInfo.authenticated) {
+                socket.emit('error', { message: 'Authentication required' });
+                return;
+            }
+            const { userId } = clientInfo;
+            this.logger.info('Received WebSocket message', {
                 socketId: socket.id,
-                userId: client.userId,
-                error: error.message,
+                userId,
+                messageType: message.type || 'unknown'
             });
-        });
-    }
-    /**
-     * 处理心跳
-     */
-    handleHeartbeat(socketId, data) {
-        const client = this.clients.get(socketId);
-        if (client) {
-            client.lastHeartbeat = new Date().toISOString();
-            this.clients.set(socketId, client);
-            // 返回心跳响应
-            this.io.to(socketId).emit("heartbeat_ack", {
-                timestamp: new Date().toISOString(),
-            });
+            // 根据消息类型处理
+            switch (message.type) {
+                case 'chat':
+                    // 处理聊天消息
+                    if (message.recipientId && message.content) {
+                        this.sendMessageToUser(message.recipientId, {
+                            type: 'chat',
+                            senderId: userId,
+                            content: message.content,
+                            timestamp: new Date().toISOString()
+                        });
+                    }
+                    break;
+                case 'notification':
+                    // 处理通知消息
+                    if (message.data) {
+                        this.broadcastNotification(message.data);
+                    }
+                    break;
+                default:
+                    this.logger.warn('Unknown message type', { type: message.type });
+            }
+        }
+        catch (error) {
+            this.logger.error('Error handling WebSocket message', { error: error.message });
+            socket.emit('error', { message: 'Failed to process message' });
         }
     }
     /**
      * 处理订阅
      */
     handleSubscribe(socket, data) {
-        const client = this.clients.get(socket.id);
-        if (!client)
-            return;
-        data.channels.forEach((channel) => {
-            // RBAC 权限检查
-            if (this.hasChannelPermission(client, channel)) {
-                socket.join(channel);
-                logger_1.logger.info("Client subscribed to channel", {
+        try {
+            const clientInfo = this.clients.get(socket.id);
+            if (!clientInfo || !clientInfo.authenticated) {
+                socket.emit('error', { message: 'Authentication required' });
+                return;
+            }
+            const { channel, subscribe = true } = data;
+            if (!channel) {
+                socket.emit('error', { message: 'Channel name is required' });
+                return;
+            }
+            if (subscribe) {
+                // 添加到频道
+                if (!this.channels.has(channel)) {
+                    this.channels.set(channel, new Set());
+                }
+                this.channels.get(channel).add(socket.id);
+                // 订阅Redis频道
+                if (this.redisClient && typeof this.redisClient.subscribe === 'function') {
+                    try {
+                        this.redisClient.subscribe(channel);
+                    }
+                    catch (redisError) {
+                        this.logger.error('Failed to subscribe to Redis channel', {
+                            channel,
+                            error: redisError.message
+                        });
+                    }
+                }
+                socket.emit('subscribe_success', { channel });
+                this.logger.info('Socket subscribed to channel', {
                     socketId: socket.id,
-                    userId: client.userId,
-                    channel,
+                    channel
                 });
             }
             else {
-                logger_1.logger.warn("Client denied subscription to channel", {
+                // 取消订阅
+                if (this.channels.has(channel)) {
+                    this.channels.get(channel).delete(socket.id);
+                    // 如果频道中没有订阅者，清理频道
+                    if (this.channels.get(channel).size === 0) {
+                        this.channels.delete(channel);
+                        // 取消订阅Redis频道
+                        if (this.redisClient && typeof this.redisClient.unsubscribe === 'function') {
+                            try {
+                                this.redisClient.unsubscribe(channel);
+                            }
+                            catch (redisError) {
+                                this.logger.error('Failed to unsubscribe from Redis channel', {
+                                    channel,
+                                    error: redisError.message
+                                });
+                            }
+                        }
+                    }
+                }
+                socket.emit('unsubscribe_success', { channel });
+                this.logger.info('Socket unsubscribed from channel', {
                     socketId: socket.id,
-                    userId: client.userId,
-                    channel,
-                });
-                socket.emit("subscription_error", {
-                    channel,
-                    message: "Permission denied",
+                    channel
                 });
             }
-        });
-        socket.emit("subscribed", {
-            channels: data.channels,
-            timestamp: new Date().toISOString(),
-        });
-    }
-    /**
-     * 处理取消订阅
-     */
-    handleUnsubscribe(socket, data) {
-        data.channels.forEach((channel) => {
-            socket.leave(channel);
-            logger_1.logger.info("Client unsubscribed from channel", {
-                socketId: socket.id,
-                channel,
-            });
-        });
-        socket.emit("unsubscribed", {
-            channels: data.channels,
-            timestamp: new Date().toISOString(),
-        });
+        }
+        catch (error) {
+            this.logger.error('Error handling subscription', { error: error.message });
+            socket.emit('error', { message: 'Failed to process subscription' });
+        }
     }
     /**
      * 处理断开连接
      */
     handleDisconnect(socket, reason) {
-        const client = this.clients.get(socket.id);
-        if (client) {
-            logger_1.logger.info("WebSocket client disconnected", {
-                socketId: socket.id,
-                userId: client.userId,
-                reason,
-                duration: Date.now() - new Date(client.connectedAt).getTime(),
+        const socketId = socket.id;
+        const clientInfo = this.clients.get(socketId);
+        this.logger.info('WebSocket connection closed', {
+            socketId,
+            reason,
+            userId: clientInfo?.userId || 'unauthenticated'
+        });
+        // 清理客户端信息
+        if (clientInfo && clientInfo.userId) {
+            // 从用户socket映射中移除
+            const userSockets = this.userSockets.get(clientInfo.userId);
+            if (userSockets) {
+                userSockets.delete(socketId);
+                // 如果用户没有其他连接，清理用户socket映射
+                if (userSockets.size === 0) {
+                    this.userSockets.delete(clientInfo.userId);
+                }
+            }
+        }
+        // 从所有频道中移除
+        for (const [channel, sockets] of this.channels.entries()) {
+            if (sockets.has(socketId)) {
+                sockets.delete(socketId);
+                // 如果频道中没有订阅者，清理频道
+                if (sockets.size === 0) {
+                    this.channels.delete(channel);
+                    // 取消订阅Redis频道
+                    if (this.redisClient && typeof this.redisClient.unsubscribe === 'function') {
+                        try {
+                            this.redisClient.unsubscribe(channel);
+                        }
+                        catch (redisError) {
+                            this.logger.error('Failed to unsubscribe from Redis channel during cleanup', {
+                                channel,
+                                error: redisError.message
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        // 移除客户端信息
+        this.clients.delete(socketId);
+    }
+    /**
+     * 处理Redis消息
+     */
+    handleRedisMessage(channel, message) {
+        try {
+            // 解析消息
+            let parsedMessage = message;
+            if (typeof message === 'string') {
+                try {
+                    parsedMessage = JSON.parse(message);
+                }
+                catch (e) {
+                    this.logger.warn('Failed to parse Redis message', { channel, error: e.message });
+                }
+            }
+            // 广播到订阅该频道的客户端
+            const sockets = this.channels.get(channel);
+            if (sockets) {
+                sockets.forEach((socketId) => {
+                    const client = this.clients.get(socketId);
+                    if (client) {
+                        client.socket.emit('redis_message', {
+                            channel,
+                            message: parsedMessage
+                        });
+                    }
+                });
+            }
+            this.logger.info('Processed Redis message', { channel });
+        }
+        catch (error) {
+            this.logger.error('Error handling Redis message', {
+                channel,
+                error: error.message
             });
-            this.clients.delete(socket.id);
         }
     }
     /**
-     * 启动心跳监控
+     * 向特定用户发送消息
      */
-    startHeartbeatMonitor() {
-        this.heartbeatInterval = setInterval(() => {
-            const now = Date.now();
-            const timeoutClients = [];
-            this.clients.forEach((client, socketId) => {
-                const lastHeartbeat = new Date(client.lastHeartbeat).getTime();
-                if (now - lastHeartbeat > this.CLIENT_TIMEOUT) {
-                    timeoutClients.push(socketId);
+    sendMessageToUser(userId, message) {
+        try {
+            const sockets = this.userSockets.get(userId);
+            if (!sockets || sockets.size === 0) {
+                this.logger.warn('No active sockets for user', { userId });
+                return false;
+            }
+            sockets.forEach((socketId) => {
+                const client = this.clients.get(socketId);
+                if (client) {
+                    client.socket.emit('message', message);
                 }
             });
-            // 断开超时的客户端
-            timeoutClients.forEach((socketId) => {
-                logger_1.logger.warn("Client timeout, disconnecting", { socketId });
-                this.io.to(socketId).disconnectSockets();
-                this.clients.delete(socketId);
+            this.logger.info('Message sent to user', { userId, messageType: message.type });
+            return true;
+        }
+        catch (error) {
+            this.logger.error('Failed to send message to user', {
+                userId,
+                error: error.message
             });
-        }, this.HEARTBEAT_INTERVAL);
+            return false;
+        }
     }
     /**
-     * RBAC 权限检查
+     * 向所有认证用户广播消息
      */
-    hasChannelPermission(client, channel) {
-        // 所有人都可以订阅自己的频道
-        if (channel === `user:${client.userId}`) {
+    broadcastMessage(message) {
+        try {
+            this.clients.forEach((client, socketId) => {
+                if (client.authenticated) {
+                    client.socket.emit('message', message);
+                }
+            });
+            this.logger.info('Message broadcasted to all authenticated users', {
+                messageType: message.type
+            });
             return true;
         }
-        // 检查角色权限
-        if (channel.startsWith("role:")) {
-            const role = channel.replace("role:", "");
-            return client.roles.includes(role);
+        catch (error) {
+            this.logger.error('Failed to broadcast message', {
+                error: error.message
+            });
+            return false;
         }
-        // 检查部门权限
-        if (channel.startsWith("department:")) {
-            const dept = channel.replace("department:", "");
-            return client.departments.includes(dept);
-        }
-        // 管理员可以订阅所有频道
-        if (client.roles.includes("admin") || client.roles.includes("super_admin")) {
+    }
+    /**
+     * 广播通知
+     */
+    broadcastNotification(notification) {
+        try {
+            this.clients.forEach((client, socketId) => {
+                if (client.authenticated) {
+                    client.socket.emit('notification', notification);
+                }
+            });
+            this.logger.info('Notification broadcasted', {
+                notificationType: notification.type
+            });
             return true;
         }
-        // 默认拒绝
-        return false;
+        catch (error) {
+            this.logger.error('Failed to broadcast notification', {
+                error: error.message
+            });
+            return false;
+        }
     }
     /**
-     * 广播工单创建事件
+     * 获取用户的连接数
      */
-    broadcastTicketCreated(ticket) {
-        const message = {
-            type: "ticket_created",
-            payload: {
-                ticketId: ticket.id,
-                ticketNumber: ticket.ticketNumber,
-                title: ticket.title,
-                priority: ticket.priority,
-                status: ticket.status,
-                createdBy: ticket.createdBy,
-                timestamp: new Date().toISOString(),
-            },
-            timestamp: new Date().toISOString(),
-            ticketId: ticket.id,
-        };
-        // 发送给管理员和客服角色
-        this.io.to("role:admin").to("role:support").emit("ticket_created", message);
-        logger_1.logger.info("Broadcast ticket created", { ticketId: ticket.id, ticketNumber: ticket.ticketNumber });
+    getUserConnectionsCount(userId) {
+        const sockets = this.userSockets.get(userId);
+        return sockets ? sockets.size : 0;
     }
     /**
-     * 广播工单更新事件
+     * 获取总连接数
      */
-    broadcastTicketUpdated(payload) {
-        const message = {
-            type: "ticket_updated",
-            payload,
-            timestamp: new Date().toISOString(),
-            ticketId: payload.ticketId,
-        };
-        // 发送给相关用户
-        this.io.to(`ticket:${payload.ticketId}`).emit("ticket_updated", message);
-        logger_1.logger.info("Broadcast ticket updated", {
-            ticketId: payload.ticketId,
-            action: payload.action,
-        });
-    }
-    /**
-     * 发送通知给特定用户
-     */
-    sendNotificationToUser(userId, notification) {
-        const message = {
-            type: "notification",
-            payload: notification,
-            timestamp: new Date().toISOString(),
-            userId,
-        };
-        this.io.to(`user:${userId}`).emit("notification", message);
-        logger_1.logger.info("Sent notification to user", {
-            userId,
-            notificationId: notification.id,
-            type: notification.type,
-        });
-    }
-    /**
-     * 广播给特定角色
-     */
-    broadcastToRole(role, message) {
-        this.io.to(`role:${role}`).emit(message.type, message);
-        logger_1.logger.info("Broadcast to role", { role, messageType: message.type });
-    }
-    /**
-     * 获取在线客户端数量
-     */
-    getOnlineClientsCount() {
+    getTotalConnectionsCount() {
         return this.clients.size;
     }
     /**
-     * 获取在线用户列表
+     * 获取认证用户数
      */
-    getOnlineUsers() {
-        return Array.from(new Set(Array.from(this.clients.values()).map((c) => c.userId)));
+    getAuthenticatedUsersCount() {
+        return this.userSockets.size;
     }
     /**
-     * 关闭 WebSocket 服务
+     * 关闭WebSocket服务
      */
     close() {
-        if (this.heartbeatInterval) {
-            clearInterval(this.heartbeatInterval);
+        try {
+            if (this.io) {
+                this.io.close();
+            }
+            // 清理资源
+            this.clients.clear();
+            this.userSockets.clear();
+            this.channels.clear();
+            this.isInitialized = false;
+            return true;
         }
-        this.io.close();
-        logger_1.logger.info("WebSocket service closed");
+        catch (error) {
+            this.logger.error('Error closing WebSocket service', {
+                error: error.message
+            });
+            return false;
+        }
+    }
+    // AI分析相关的发布方法
+    publishAiAnalysis(userId, analysisData) {
+        try {
+            // 向特定用户发送AI分析结果
+            return this.sendMessageToUser(userId, {
+                type: 'ai_analysis',
+                data: analysisData,
+                timestamp: new Date().toISOString()
+            });
+        }
+        catch (error) {
+            this.logger.error('Failed to publish AI analysis', {
+                userId,
+                error: error.message
+            });
+            return false;
+        }
+    }
+    // 发布系统通知
+    publishSystemNotification(notification) {
+        try {
+            // 广播系统通知
+            return this.broadcastNotification({
+                type: 'system_notification',
+                data: notification,
+                timestamp: new Date().toISOString()
+            });
+        }
+        catch (error) {
+            this.logger.error('Failed to publish system notification', {
+                error: error.message
+            });
+            return false;
+        }
     }
 }
-exports.WebSocketService = WebSocketService;
+// 导出服务类（注意：这里只导出类，不创建单例实例）
+module.exports = WebSocketService;

@@ -46,6 +46,14 @@ export class AppError extends Error {
     return new AppError(message, 403, errorCode, details);
   }
 
+  static tooManyRequests(
+    message: string = "Too many requests",
+    errorCode: ErrorCode = ErrorCode.TOO_MANY_REQUESTS,
+    details?: any
+  ): AppError {
+    return new AppError(message, 429, errorCode, details);
+  }
+
   static notFound(
     message: string = "Resource not found",
     errorCode: ErrorCode = ErrorCode.NOT_FOUND,

@@ -1,31 +1,36 @@
-import { Request, Response, NextFunction } from 'express';
-import { AuthService } from '../services/auth.service';
 import { AppError } from '../utils/app-error';
 import { logger } from '../config/logger';
 import { ErrorCode } from '../constants/error-codes';
+import AuthService from '../services/auth.service';
 
-interface UserPayload {
-  userId: string;
-  email: string;
-  roles: string[];
-}
-
+// 扩展Express Request类型以包含user属性
 declare global {
   namespace Express {
     interface Request {
-      user?: UserPayload;
+      user?: {
+        userId: string;
+        email: string;
+        roles: string[];
+      };
     }
   }
 }
 
 /**
- * 认证中间件 - 验证访问令牌
+ * @typedef {Object} UserPayload
+ * @property {string} userId
+ * @property {string} email
+ * @property {string[]} roles
  */
-export const authenticate = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
+
+/**
+ * 认证中间件 - 验证访问令牌
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ * @returns {Promise<void>}
+ */
+const authenticate = async (req: import('express').Request, res: import('express').Response, next: import('express').NextFunction): Promise<void> => {
   try {
     // 从请求头中获取令牌
     const authHeader = req.headers.authorization;
@@ -47,27 +52,29 @@ export const authenticate = async (
 
     // 继续请求处理
     next();
-  } catch (error: unknown) {
+  } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.warn('Authentication failed', { error: errorMessage });
-    next(error as Error);
+    next(error);
   }
 };
 
 /**
  * 授权中间件 - 验证用户角色
+ * @param {string[]} roles - 允许访问的角色列表
+ * @returns {Function} 中间件函数
  */
-export const authorize = (roles: string[]) => {
-  return (req: Request, res: Response, next: NextFunction): void => {
+const authorize = (roles: string[]) => {
+  return (req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => {
     try {
       if (!req.user) {
         throw AppError.unauthorized('User not authenticated', ErrorCode.UNAUTHORIZED);
       }
 
       // 检查用户是否有任何所需角色
-      const hasRole = req.user.roles.some(userRole => 
-        roles.includes(userRole)
-      );
+      const hasRole = req.user.roles.some((userRole: string) => 
+    roles.includes(userRole)
+  );
 
       if (!hasRole) {
         throw AppError.forbidden('Insufficient permissions', ErrorCode.FORBIDDEN);
@@ -81,22 +88,22 @@ export const authorize = (roles: string[]) => {
       });
 
       next();
-    } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.warn('Authorization failed', { error: errorMessage });
-    next(error as Error);
-  }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.warn('Authorization failed', { error: errorMessage });
+      next(error);
+    }
   };
 };
 
 /**
  * 可选认证中间件 - 有令牌则认证，无令牌也可以继续
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ * @returns {Promise<void>}
  */
-export const optionalAuth = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
+const optionalAuth = async (req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => {
   try {
     const authHeader = req.headers.authorization;
     if (authHeader) {
@@ -106,15 +113,15 @@ export const optionalAuth = async (
           const user = AuthService.verifyAccessToken(token);
           req.user = user;
           logger.info('Optional authentication successful', { userId: user.userId });
-        } catch (error: unknown) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            // 可选认证情况下，令牌验证失败不阻止请求
-            logger.warn('Optional authentication token invalid', { error: errorMessage });
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          // 可选认证情况下，令牌验证失败不阻止请求
+          logger.warn('Optional authentication token invalid', { error: errorMessage });
         }
       }
     }
     next();
-  } catch (error: unknown) {
+  } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.warn('Optional authentication middleware error', { error: errorMessage });
     next(); // 即使中间件本身出错，也继续请求处理
@@ -123,8 +130,12 @@ export const optionalAuth = async (
 
 /**
  * CSRF保护中间件
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ * @returns {void}
  */
-export const csrfProtection = (req: Request, res: Response, next: NextFunction): void => {
+const csrfProtection = (req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => {
   // 对于API请求，通常只需要验证来源头
   const origin = req.headers.origin;
   const referer = req.headers.referer;
@@ -144,11 +155,13 @@ export const csrfProtection = (req: Request, res: Response, next: NextFunction):
 
 /**
  * 会话超时检查中间件
+ * @param {number} timeoutMinutes - 超时时间（分钟），默认30分钟
+ * @returns {Function} 中间件函数
  */
-export const sessionTimeout = (timeoutMinutes = 30) => {
+const sessionTimeout = (timeoutMinutes: number = 30) => {
   const timeoutMs = timeoutMinutes * 60 * 1000;
 
-  return (req: Request, res: Response, next: NextFunction): void => {
+  return (req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => {
     if (req.user) {
       // 这里简化处理，实际项目中可能需要在Redis中存储用户的最后活动时间
       // 然后检查是否超过了超时时间
@@ -161,21 +174,39 @@ export const sessionTimeout = (timeoutMinutes = 30) => {
 
 /**
  * 获取当前用户信息辅助函数
+ * @param {import('express').Request} req
+ * @returns {UserPayload|undefined}
  */
-export const getCurrentUser = (req: Request): UserPayload | undefined => {
+const getCurrentUser = (req: import('express').Request) => {
   return req.user;
 };
 
 /**
  * 检查用户是否已认证
+ * @param {import('express').Request} req
+ * @returns {boolean}
  */
-export const isAuthenticated = (req: Request): boolean => {
+const isAuthenticated = (req: import('express').Request): boolean => {
   return !!req.user;
 };
 
 /**
  * 检查用户是否具有特定角色
+ * @param {import('express').Request} req
+ * @param {string} role
+ * @returns {boolean}
  */
-export const hasRole = (req: Request, role: string): boolean => {
+const hasRole = (req: import('express').Request, role: string): boolean => {
   return req.user?.roles.includes(role) || false;
+};
+
+export {
+  authenticate,
+  authorize,
+  optionalAuth,
+  csrfProtection,
+  sessionTimeout,
+  getCurrentUser,
+  isAuthenticated,
+  hasRole
 };
