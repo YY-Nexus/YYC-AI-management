@@ -1,169 +1,156 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.httpServer = exports.app = exports.wsService = void 0;
-const express_1 = __importDefault(require("express"));
-const cors_1 = __importDefault(require("cors"));
-const helmet_1 = __importDefault(require("helmet"));
-const http_1 = require("http");
-const logger_1 = require("./config/logger");
-const redis_1 = require("./config/redis");
-const database_1 = require("./config/database");
-const websocket_service_1 = require("./services/websocket.service");
-const redis_pubsub_service_1 = require("./services/redis-pubsub.service");
-// Middleware and services
-const auth_middleware_1 = require("./middleware/auth.middleware");
-// Routes
-const reconciliation_routes_1 = __importDefault(require("./routes/reconciliation.routes"));
-const tickets_routes_1 = __importDefault(require("./routes/tickets.routes"));
-const ai_analysis_routes_1 = __importDefault(require("./routes/ai-analysis.routes"));
-const health_routes_1 = __importDefault(require("./routes/health.routes"));
-const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
-const metrics_routes_1 = __importDefault(require("./routes/metrics.routes"));
-const security_routes_1 = __importDefault(require("./routes/security.routes"));
-const app = (0, express_1.default)();
-exports.app = app;
-const httpServer = (0, http_1.createServer)(app);
-exports.httpServer = httpServer;
-const PORT = process.env.PORT || 3001;
-// Middleware
-app.use((0, helmet_1.default)());
-// CORS 配置 - 支持多域名和 Vercel
-const getCorsOrigin = () => {
-    const origins = [];
-    // 从环境变量获取前端 URL
-    if (process.env.FRONTEND_BASE_URL) {
-        origins.push(process.env.FRONTEND_BASE_URL);
-    }
-    // 添加允许的域名列表
-    if (process.env.ALLOWED_ORIGINS) {
-        origins.push(...process.env.ALLOWED_ORIGINS.split(','));
-    }
-    // 生产环境支持 Vercel 域名
-    if (process.env.NODE_ENV === "production") {
-        origins.push(/\.vercel\.app$/);
-    }
-    // 开发环境默认值
-    if (origins.length === 0) {
-        origins.push("http://localhost:3000");
-    }
-    return origins;
-};
-app.use((0, cors_1.default)({
-    origin: (origin, callback) => {
-        const allowedOrigins = getCorsOrigin();
-        // 允许没有 origin 的请求
-        if (!origin) {
-            return callback(null, true);
-        }
-        // 检查是否允许
-        const isAllowed = allowedOrigins.some(allowed => {
-            if (typeof allowed === 'string') {
-                return allowed === origin;
-            }
-            return allowed.test(origin);
-        });
-        if (isAllowed) {
-            callback(null, true);
-        }
-        else {
-            callback(null, false);
-        }
-    },
-    credentials: true,
+// 在文件顶部添加dotenv导入
+const dotenv = require('dotenv');
+const path = require('path');
+const express = require('express');
+const http = require('http');
+const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const { pool } = require('./config/database');
+const { logger } = require('./config/logger');
+const { checkRedisHealth, closeRedis } = require('./config/redis');
+const authRoutes = require('./routes/auth.routes');
+const ticketsRoutes = require('./routes/tickets.routes');
+const securityRoutes = require('./routes/security.routes');
+const metricsRoutes = require('./routes/metrics.routes');
+const healthRoutes = require('./routes/health.routes');
+const WebSocketService = require('./services/websocket.service');
+// 配置dotenv，使用绝对路径加载.env.local文件
+dotenv.config({ path: path.resolve(__dirname, '../../.env.local') });
+// 创建Express应用
+const app = express();
+const PORT = process.env.PORT || 3000;
+// 创建HTTP服务器
+const httpServer = http.createServer(app);
+// 初始化WebSocket服务
+const wsService = new WebSocketService(httpServer);
+// 安全中间件
+app.use(helmet());
+// CORS配置
+app.use(cors({
+    origin: process.env.CORS_ORIGIN || '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
 }));
-app.use(express_1.default.json({ limit: "10mb" }));
-app.use(express_1.default.urlencoded({ extended: true, limit: "10mb" }));
-// Request logging
+// 请求体解析
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// 速率限制
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15分钟
+    max: 100, // 每个IP最多100个请求
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        error: 'Too many requests, please try again later.',
+    },
+});
+app.use(limiter);
+// 请求日志
 app.use((req, res, next) => {
     const start = Date.now();
-    res.on("finish", () => {
+    logger.info('Request received', {
+        method: req.method,
+        url: req.url,
+        ip: req.ip,
+    });
+    // 记录响应时间
+    res.on('finish', () => {
         const duration = Date.now() - start;
-        logger_1.logger.info("HTTP Request", {
+        logger.info('Request completed', {
             method: req.method,
-            path: req.path,
+            url: req.url,
             status: res.statusCode,
             duration: `${duration}ms`,
         });
     });
     next();
 });
-// Initialize WebSocket service
-exports.wsService = new websocket_service_1.WebSocketService(httpServer);
-logger_1.logger.info("WebSocket service initialized");
-// API Routes
-app.use("/api/auth", auth_routes_1.default);
-app.use("/api/reconciliation", auth_middleware_1.authenticate, reconciliation_routes_1.default);
-app.use("/api/tickets", auth_middleware_1.authenticate, tickets_routes_1.default);
-app.use("/api/ai-analysis", auth_middleware_1.authenticate, ai_analysis_routes_1.default);
-app.use("/api/health", health_routes_1.default);
-app.use("/api/metrics", metrics_routes_1.default);
-app.use("/api/security", auth_middleware_1.authenticate, security_routes_1.default);
-// Root endpoint
-app.get("/", (req, res) => {
+// API路由
+app.use('/api/auth', authRoutes);
+app.use('/api/tickets', ticketsRoutes);
+app.use('/api/security', securityRoutes);
+app.use('/api/metrics', metricsRoutes);
+app.use('/api/health', healthRoutes);
+// 首页路由
+app.get('/', (req, res) => {
     res.json({
-        service: "YanYu Cloud³ Backend API",
-        version: "1.0.0",
-        status: "running",
-        timestamp: new Date().toISOString(),
-    });
-});
-// Error handling
-app.use((err, req, res, next) => {
-    logger_1.logger.error("Unhandled error", {
-        error: err.message,
-        stack: err.stack,
-        path: req.path,
-        method: req.method,
-    });
-    res.status(err.status || 500).json({
-        error: {
-            message: err.message || "Internal Server Error",
-            status: err.status || 500,
+        message: 'Welcome to YanYu Cloud³ Backend API',
+        version: process.env.npm_package_version || '1.0.0',
+        routes: {
+            auth: '/api/auth',
+            tickets: '/api/tickets',
+            security: '/api/security',
+            metrics: '/api/metrics',
+            health: '/api/health',
         },
     });
 });
-// Graceful shutdown
-const gracefulShutdown = async () => {
-    logger_1.logger.info("Received shutdown signal, closing server...");
-    // Close WebSocket connections
-    exports.wsService.close();
-    // Close Redis Pub/Sub
-    await redis_pubsub_service_1.pubSubService.cleanup();
-    // Close Redis connection
-    await (0, redis_1.closeRedis)();
-    // Close database pool
-    await database_1.pool.end();
-    // Close HTTP server
-    httpServer.close(() => {
-        logger_1.logger.info("Server closed successfully");
-        process.exit(0);
+// 错误处理中间件
+app.use((err, req, res, next) => {
+    logger.error('API Error', { error: err.message, stack: err.stack });
+    res.status(500).json({
+        error: 'Internal Server Error',
+        message: err.message,
+        environment: process.env.NODE_ENV || 'development',
     });
-    // Force exit after 10 seconds
-    setTimeout(() => {
-        logger_1.logger.error("Could not close connections in time, forcefully shutting down");
+});
+// 优雅关闭
+const gracefulShutdown = async () => {
+    logger.info('Gracefully shutting down server...');
+    try {
+        // Close WebSocket connections
+        if (wsService && wsService.close) {
+            wsService.close();
+        }
+        logger.info('WebSocket connections closed');
+        // Close Redis connection
+        await closeRedis();
+        logger.info('Redis connection closed');
+        // Close database connection
+        if (pool && pool.end) {
+            await pool.end();
+            logger.info('Database connection closed');
+        }
+        // Close HTTP server
+        httpServer.close(() => {
+            logger.info('HTTP server closed');
+            process.exit(0);
+        });
+        // Force exit after 10 seconds if not closed
+        setTimeout(() => {
+            logger.error('Forcing shutdown after timeout');
+            process.exit(1);
+        }, 10000);
+    }
+    catch (error) {
+        logger.error('Error during shutdown', { error });
         process.exit(1);
-    }, 10000);
+    }
 };
-process.on("SIGTERM", gracefulShutdown);
-process.on("SIGINT", gracefulShutdown);
+// Listen for termination signals
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
 // Start server
 httpServer.listen(PORT, async () => {
-    logger_1.logger.info(`🚀 YanYu Cloud³ Backend Server started`, {
+    logger.info(`🚀 YanYu Cloud³ Backend Server started`, {
         port: PORT,
-        environment: process.env.NODE_ENV || "development",
+        environment: process.env.NODE_ENV || 'development',
         pid: process.pid,
     });
     // Health checks
-    const redisHealth = await (0, redis_1.checkRedisHealth)();
-    logger_1.logger.info("Redis health check", redisHealth);
+    const redisHealth = await checkRedisHealth();
+    logger.info('Redis health check', redisHealth);
     try {
-        await database_1.pool.query("SELECT NOW()");
-        logger_1.logger.info("✅ Database connection established");
+        if (pool && pool.query) {
+            await pool.query('SELECT NOW()');
+            logger.info('✅ Database connection established');
+        }
     }
     catch (error) {
-        logger_1.logger.error("❌ Database connection failed", { error });
+        logger.error('❌ Database connection failed', { error });
     }
 });
+// 使用CommonJS导出
+module.exports = { app, httpServer, wsService };

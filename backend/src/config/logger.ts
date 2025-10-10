@@ -1,9 +1,8 @@
-import * as winston from "winston"
+import winston from 'winston';
+const logLevel = process.env.LOG_LEVEL || "info";
+const environment = process.env.NODE_ENV || "development";
 
-const logLevel = process.env.LOG_LEVEL || "info"
-const environment = process.env.NODE_ENV || "development"
-
-export const logger = winston.createLogger({
+const logger = winston.createLogger({
   level: logLevel,
   format: winston.format.combine(
     winston.format.timestamp(),
@@ -16,7 +15,7 @@ export const logger = winston.createLogger({
       format: winston.format.combine(winston.format.colorize(), winston.format.simple()),
     }),
   ],
-})
+});
 
 // 生产环境添加文件日志
 if (environment === "production") {
@@ -25,10 +24,12 @@ if (environment === "production") {
       filename: "logs/error.log",
       level: "error",
     }),
-  )
+  );
   logger.add(
     new winston.transports.File({
       filename: "logs/combined.log",
     }),
-  )
+  );
 }
+
+export { logger };

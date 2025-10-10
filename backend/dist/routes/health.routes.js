@@ -1,19 +1,18 @@
 "use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-const express_1 = require("express");
-const database_1 = require("../config/database");
-const redis_1 = require("../config/redis");
-const metrics_1 = require("../config/metrics");
-const logger_1 = require("../config/logger");
-const router = (0, express_1.Router)();
+const express = require('express');
+const { checkDatabaseHealth } = require('../config/database');
+const { checkRedisHealth } = require('../config/redis');
+const { register } = require('../config/metrics');
+const { logger } = require('../config/logger');
+const router = express.Router();
 /**
  * @route   GET /health
  * @desc    基础健康检查
  * @access  Public
  */
-router.get("/", async (req, res) => {
+router.get('/', async (req, res) => {
     res.json({
-        status: "ok",
+        status: 'ok',
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
     });
@@ -23,20 +22,20 @@ router.get("/", async (req, res) => {
  * @desc    就绪检查（K8s readiness probe）
  * @access  Public
  */
-router.get("/ready", async (req, res) => {
+router.get('/ready', async (req, res) => {
     try {
         // 检查数据库
-        const dbHealth = await (0, database_1.checkDatabaseHealth)();
+        const dbHealth = await checkDatabaseHealth();
         if (!dbHealth) {
             throw new Error(`Database unhealthy`);
         }
         // 检查 Redis
-        const redisHealth = await (0, redis_1.checkRedisHealth)();
+        const redisHealth = await checkRedisHealth();
         if (!redisHealth) {
             throw new Error(`Redis unhealthy`);
         }
         res.json({
-            status: "ready",
+            status: 'ready',
             timestamp: new Date().toISOString(),
             checks: {
                 database: dbHealth,
@@ -45,10 +44,10 @@ router.get("/ready", async (req, res) => {
         });
     }
     catch (error) {
-        logger_1.logger.error("Readiness check failed", { error });
+        logger.error('Readiness check failed', { error });
         res.status(503).json({
-            status: "not ready",
-            error: error instanceof Error ? error.message : "Unknown error",
+            status: 'not ready',
+            error: error instanceof Error ? error.message : 'Unknown error',
             timestamp: new Date().toISOString(),
         });
     }
@@ -58,9 +57,9 @@ router.get("/ready", async (req, res) => {
  * @desc    存活检查（K8s liveness probe）
  * @access  Public
  */
-router.get("/live", (req, res) => {
+router.get('/live', (req, res) => {
     res.json({
-        status: "alive",
+        status: 'alive',
         timestamp: new Date().toISOString(),
         process: {
             uptime: process.uptime(),
@@ -74,17 +73,17 @@ router.get("/live", (req, res) => {
  * @desc    Prometheus 指标端点
  * @access  Public
  */
-router.get("/metrics", async (req, res) => {
+router.get('/metrics', async (req, res) => {
     try {
-        res.set("Content-Type", metrics_1.register.contentType);
-        const metrics = await metrics_1.register.metrics();
+        res.set('Content-Type', register.contentType);
+        const metrics = await register.metrics();
         res.send(metrics);
     }
     catch (error) {
-        logger_1.logger.error("Failed to collect metrics", { error });
+        logger.error('Failed to collect metrics', { error });
         res.status(500).json({
-            error: "Failed to collect metrics",
+            error: 'Failed to collect metrics',
         });
     }
 });
-exports.default = router;
+module.exports = router;

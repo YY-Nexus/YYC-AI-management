@@ -209,4 +209,4 @@ router.post("/:id/resolve", (0, auth_middleware_1.authorize)(["reconciliation:re
         next(error);
     }
 });
-exports.default = router;
+module.exports = router;

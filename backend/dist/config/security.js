@@ -4,8 +4,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.configureSecurityMiddleware = configureSecurityMiddleware;
-const helmet_1 = __importDefault(require("helmet"));
 const cors_1 = __importDefault(require("cors"));
+const helmet_1 = __importDefault(require("helmet"));
 function configureSecurityMiddleware(app) {
     // CORS 配置
     const getAllowedOrigins = () => {

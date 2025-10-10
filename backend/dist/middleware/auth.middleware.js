@@ -1,54 +1,63 @@
 "use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.hasRole = exports.isAuthenticated = exports.getCurrentUser = exports.sessionTimeout = exports.csrfProtection = exports.optionalAuth = exports.authorize = exports.authenticate = void 0;
-const auth_service_1 = require("../services/auth.service");
-const app_error_1 = require("../utils/app-error");
-const logger_1 = require("../config/logger");
-const error_codes_1 = require("../constants/error-codes");
+const AuthService = require('../services/auth.service');
+const AppError = require('../utils/app-error');
+const { logger } = require('../config/logger');
+const { ErrorCode } = require('../constants/error-codes');
+/**
+ * @typedef {Object} UserPayload
+ * @property {string} userId
+ * @property {string} email
+ * @property {string[]} roles
+ */
 /**
  * 认证中间件 - 验证访问令牌
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ * @returns {Promise<void>}
  */
 const authenticate = async (req, res, next) => {
     try {
         // 从请求头中获取令牌
         const authHeader = req.headers.authorization;
         if (!authHeader) {
-            throw app_error_1.AppError.unauthorized('Authorization header is required', error_codes_1.ErrorCode.UNAUTHORIZED);
+            throw AppError.unauthorized('Authorization header is required', ErrorCode.UNAUTHORIZED);
         }
         const [bearer, token] = authHeader.split(' ');
         if (bearer !== 'Bearer' || !token) {
-            throw app_error_1.AppError.unauthorized('Invalid authorization format. Use Bearer token', error_codes_1.ErrorCode.UNAUTHORIZED);
+            throw AppError.unauthorized('Invalid authorization format. Use Bearer token', ErrorCode.UNAUTHORIZED);
         }
         // 验证令牌并获取用户信息
-        const user = auth_service_1.AuthService.verifyAccessToken(token);
+        const user = AuthService.verifyAccessToken(token);
         req.user = user;
         // 记录认证事件
-        logger_1.logger.info('User authenticated', { userId: user.userId, email: user.email });
+        logger.info('User authenticated', { userId: user.userId, email: user.email });
         // 继续请求处理
         next();
     }
     catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        logger_1.logger.warn('Authentication failed', { error: errorMessage });
+        logger.warn('Authentication failed', { error: errorMessage });
         next(error);
     }
 };
-exports.authenticate = authenticate;
 /**
  * 授权中间件 - 验证用户角色
+ * @param {string[]} roles - 允许访问的角色列表
+ * @returns {Function} 中间件函数
  */
 const authorize = (roles) => {
     return (req, res, next) => {
         try {
             if (!req.user) {
-                throw app_error_1.AppError.unauthorized('User not authenticated', error_codes_1.ErrorCode.UNAUTHORIZED);
+                throw AppError.unauthorized('User not authenticated', ErrorCode.UNAUTHORIZED);
             }
             // 检查用户是否有任何所需角色
             const hasRole = req.user.roles.some(userRole => roles.includes(userRole));
             if (!hasRole) {
-                throw app_error_1.AppError.forbidden('Insufficient permissions', error_codes_1.ErrorCode.FORBIDDEN);
+                throw AppError.forbidden('Insufficient permissions', ErrorCode.FORBIDDEN);
             }
-            logger_1.logger.info('User authorized', {
+            logger.info('User authorized', {
                 userId: req.user.userId,
                 email: req.user.email,
                 requiredRoles: roles,
@@ -58,14 +67,17 @@ const authorize = (roles) => {
         }
         catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            logger_1.logger.warn('Authorization failed', { error: errorMessage });
+            logger.warn('Authorization failed', { error: errorMessage });
             next(error);
         }
     };
 };
-exports.authorize = authorize;
 /**
  * 可选认证中间件 - 有令牌则认证，无令牌也可以继续
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ * @returns {Promise<void>}
  */
 const optionalAuth = async (req, res, next) => {
     try {
@@ -74,14 +86,14 @@ const optionalAuth = async (req, res, next) => {
             const [bearer, token] = authHeader.split(' ');
             if (bearer === 'Bearer' && token) {
                 try {
-                    const user = auth_service_1.AuthService.verifyAccessToken(token);
+                    const user = AuthService.verifyAccessToken(token);
                     req.user = user;
-                    logger_1.logger.info('Optional authentication successful', { userId: user.userId });
+                    logger.info('Optional authentication successful', { userId: user.userId });
                 }
                 catch (error) {
                     const errorMessage = error instanceof Error ? error.message : String(error);
                     // 可选认证情况下，令牌验证失败不阻止请求
-                    logger_1.logger.warn('Optional authentication token invalid', { error: errorMessage });
+                    logger.warn('Optional authentication token invalid', { error: errorMessage });
                 }
             }
         }
@@ -89,13 +101,16 @@ const optionalAuth = async (req, res, next) => {
     }
     catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        logger_1.logger.warn('Optional authentication middleware error', { error: errorMessage });
+        logger.warn('Optional authentication middleware error', { error: errorMessage });
         next(); // 即使中间件本身出错，也继续请求处理
     }
 };
-exports.optionalAuth = optionalAuth;
 /**
  * CSRF保护中间件
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ * @returns {void}
  */
 const csrfProtection = (req, res, next) => {
     // 对于API请求，通常只需要验证来源头
@@ -106,14 +121,15 @@ const csrfProtection = (req, res, next) => {
     const isSafeMethod = ['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(req.method);
     // 对于不安全的方法，验证来源
     if (!isSafeMethod && origin && !allowedOrigins.includes(origin)) {
-        logger_1.logger.warn('CSRF protection rejected request', { origin, method: req.method });
-        return next(app_error_1.AppError.forbidden('Invalid CSRF token', error_codes_1.ErrorCode.FORBIDDEN));
+        logger.warn('CSRF protection rejected request', { origin, method: req.method });
+        return next(AppError.forbidden('Invalid CSRF token', ErrorCode.FORBIDDEN));
     }
     next();
 };
-exports.csrfProtection = csrfProtection;
 /**
  * 会话超时检查中间件
+ * @param {number} timeoutMinutes - 超时时间（分钟），默认30分钟
+ * @returns {Function} 中间件函数
  */
 const sessionTimeout = (timeoutMinutes = 30) => {
     const timeoutMs = timeoutMinutes * 60 * 1000;
@@ -128,25 +144,38 @@ const sessionTimeout = (timeoutMinutes = 30) => {
         }
     };
 };
-exports.sessionTimeout = sessionTimeout;
 /**
  * 获取当前用户信息辅助函数
+ * @param {import('express').Request} req
+ * @returns {UserPayload|undefined}
  */
 const getCurrentUser = (req) => {
     return req.user;
 };
-exports.getCurrentUser = getCurrentUser;
 /**
  * 检查用户是否已认证
+ * @param {import('express').Request} req
+ * @returns {boolean}
  */
 const isAuthenticated = (req) => {
     return !!req.user;
 };
-exports.isAuthenticated = isAuthenticated;
 /**
  * 检查用户是否具有特定角色
+ * @param {import('express').Request} req
+ * @param {string} role
+ * @returns {boolean}
  */
 const hasRole = (req, role) => {
     return req.user?.roles.includes(role) || false;
 };
-exports.hasRole = hasRole;
+module.exports = {
+    authenticate,
+    authorize,
+    optionalAuth,
+    csrfProtection,
+    sessionTimeout,
+    getCurrentUser,
+    isAuthenticated,
+    hasRole
+};

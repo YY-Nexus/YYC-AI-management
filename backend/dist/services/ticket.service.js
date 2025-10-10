@@ -1,8 +1,6 @@
 "use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.TicketService = void 0;
-const database_1 = require("../config/database");
-const logger_1 = require("../config/logger");
+const { pool } = require('../config/database');
+const { logger } = require('../config/logger');
 class TicketService {
     /**
      * 获取工单列表
@@ -39,13 +37,13 @@ class TicketService {
         // 获取总数
         const countQuery = `SELECT COUNT(DISTINCT t.id) FROM support_tickets t WHERE 1=1 ${status ? "AND t.status = $1" : ""}`;
         const countParams = status ? [status] : [];
-        const countResult = await database_1.pool.query(countQuery, countParams);
+        const countResult = await pool.query(countQuery, countParams);
         const total = Number.parseInt(countResult.rows[0].count);
         // 添加排序和分页
         query += ` ORDER BY t.created_at DESC`;
         query += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
         params.push(limit, offset);
-        const result = await database_1.pool.query(query, params);
+        const result = await pool.query(query, params);
         // 加载每个工单的消息
         const tickets = await Promise.all(result.rows.map(async (row) => {
             const messages = await this.getTicketMessages(row.id);
@@ -61,7 +59,7 @@ class TicketService {
       SELECT * FROM support_tickets
       WHERE id = $1
     `;
-        const result = await database_1.pool.query(query, [ticketId]);
+        const result = await pool.query(query, [ticketId]);
         if (result.rows.length === 0) {
             return null;
         }
@@ -94,7 +92,7 @@ class TicketService {
             dueDate,
             ticket.createdBy,
         ];
-        const result = await database_1.pool.query(query, values);
+        const result = await pool.query(query, values);
         const created = this.mapDbTicketToModel(result.rows[0], []);
         // 创建初始消息
         await this.addMessage(created.id, {
@@ -103,7 +101,7 @@ class TicketService {
             isInternal: false,
             content: ticket.description,
         });
-        logger_1.logger.info("Ticket created", { ticketNumber, priority: ticket.priority });
+        logger.info("Ticket created", { ticketNumber, priority: ticket.priority });
         return created;
     }
     /**
@@ -153,7 +151,7 @@ class TicketService {
       RETURNING *
     `;
         values.push(ticketId);
-        const result = await database_1.pool.query(query, values);
+        const result = await pool.query(query, values);
         // 记录审计日志
         await this.logAudit(ticketId, "update", ticket, result.rows[0], userId);
         // 检查SLA违规
@@ -161,7 +159,7 @@ class TicketService {
             const responseTime = (result.rows[0].resolved_at - result.rows[0].created_at) / 1000 / 60 / 60; // 小时
             const slaHours = this.getSlaHours(ticket.priority);
             if (responseTime > slaHours) {
-                logger_1.logger.info("SLA violation detected", { ticketId, priority: ticket.priority, responseTime, slaHours });
+                logger.info("SLA violation detected", { ticketId, priority: ticket.priority, responseTime, slaHours });
             }
         }
         const messages = await this.getTicketMessages(ticketId);
@@ -186,9 +184,9 @@ class TicketService {
             message.isInternal || false,
             JSON.stringify(message.attachments || [])
         ];
-        const result = await database_1.pool.query(query, values);
+        const result = await pool.query(query, values);
         const createdMessage = this.mapDbMessageToModel(result.rows[0]);
-        logger_1.logger.info("Message added to ticket", { ticketId, sender: message.authorId });
+        logger.info("Message added to ticket", { ticketId, sender: message.authorId });
         return createdMessage;
     }
     /**
@@ -208,7 +206,7 @@ class TicketService {
       FROM support_tickets
       WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
     `;
-        const result = await database_1.pool.query(query);
+        const result = await pool.query(query);
         const row = result.rows[0];
         return {
             total: Number.parseInt(row.total),
@@ -230,8 +228,8 @@ class TicketService {
       WHERE ticket_id = $1
       ORDER BY timestamp ASC
     `;
-        const result = await database_1.pool.query(query, [ticketId]);
-        return result.rows.map(this.mapDbMessageToModel);
+        const result = await pool.query(query, [ticketId]);
+        return result.rows.map(this.mapDbMessageToModel.bind(this));
     }
     async generateTicketNumber() {
         const year = new Date().getFullYear();
@@ -240,7 +238,7 @@ class TicketService {
       FROM support_tickets 
       WHERE ticket_number LIKE $1
     `;
-        const result = await database_1.pool.query(query, [`TKT-${year}-%`]);
+        const result = await pool.query(query, [`TKT-${year}-%`]);
         const count = Number.parseInt(result.rows[0].count) + 1;
         return `TKT-${year}-${String(count).padStart(4, "0")}`;
     }
@@ -264,7 +262,7 @@ class TicketService {
         ticket_id, action, old_value, new_value, performed_by
       ) VALUES ($1, $2, $3, $4, $5)
     `;
-        await database_1.pool.query(query, [ticketId, action, JSON.stringify(oldValue), JSON.stringify(newValue), userId]);
+        await pool.query(query, [ticketId, action, JSON.stringify(oldValue), JSON.stringify(newValue), userId]);
     }
     mapDbTicketToModel(row, messages) {
         return {
@@ -294,12 +292,12 @@ class TicketService {
             content: row.content,
             authorId: row.sender,
             authorName: row.sender_name,
-            // senderType不在TicketMessage接口中，所以移除
             isInternal: row.is_internal,
             attachments: row.attachments,
-            // 使用createdAt代替timestamp，因为TicketMessage接口中使用的是createdAt
             createdAt: row.timestamp,
         };
     }
 }
-exports.TicketService = TicketService;
+// 导出服务
+module.exports = TicketService;
+module.exports.TicketService = TicketService;

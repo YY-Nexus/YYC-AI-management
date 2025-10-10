@@ -106,4 +106,4 @@ router.get("/export-exceptions", (0, auth_middleware_1.authorize)(["reconciliati
         next(error);
     }
 });
-exports.default = router;
+module.exports = router;

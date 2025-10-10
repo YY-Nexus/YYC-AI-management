@@ -1,4 +1,5 @@
-import { pubSubService, RedisChannel, type PubSubMessage } from "./redis-pubsub.service"
+import { redisPubSubService, RedisChannel, type PubSubMessage } from "./redis-pubsub.service"
+// @ts-ignore - server.ts使用CommonJS导出
 import { wsService } from '../server'
 import { logger } from "../config/logger"
 import { aiAnalysisTotal, aiAnalysisErrors, aiAnalysisLatency, aiTokensUsed } from "../config/metrics"
@@ -35,22 +36,22 @@ class NotificationService {
   async initialize(): Promise<void> {
     try {
       // 订阅 AI 分析频道
-      await pubSubService.subscribe(RedisChannel.AI_ANALYSIS)
-      await pubSubService.subscribe(RedisChannel.RECONCILIATION)
-      await pubSubService.subscribe(RedisChannel.NOTIFICATION)
+      await redisPubSubService.subscribe(RedisChannel.AI_ANALYSIS)
+      await redisPubSubService.subscribe(RedisChannel.RECONCILIATION)
+      await redisPubSubService.subscribe(RedisChannel.NOTIFICATION)
 
-      // 监听 AI 分析事件
-      pubSubService.on(RedisChannel.AI_ANALYSIS, (message: PubSubMessage) => {
+      // 监听AI分析结果
+      redisPubSubService.on(RedisChannel.AI_ANALYSIS, (message: PubSubMessage) => {
         this.handleAIAnalysisEvent(message)
       })
 
       // 监听对账事件
-      pubSubService.on(RedisChannel.RECONCILIATION, (message: PubSubMessage) => {
+      redisPubSubService.on(RedisChannel.RECONCILIATION, (message: PubSubMessage) => {
         this.handleReconciliationEvent(message)
       })
 
       // 监听通用通知事件
-      pubSubService.on(RedisChannel.NOTIFICATION, (message: PubSubMessage) => {
+      redisPubSubService.on(RedisChannel.NOTIFICATION, (message: PubSubMessage) => {
         this.handleNotificationEvent(message)
       })
 
@@ -230,10 +231,9 @@ class NotificationService {
    * 发送自定义通知
    */
   async notify(payload: NotificationPayload): Promise<void> {
-    await pubSubService.publish(RedisChannel.NOTIFICATION, {
+    await redisPubSubService.publish(RedisChannel.NOTIFICATION, {
       event: NotificationEvent.SYSTEM_ALERT,
       data: payload,
-      timestamp: Date.now(),
       userId: payload.userId,
     })
   }
@@ -242,10 +242,9 @@ class NotificationService {
    * 发送 AI 分析开始通知
    */
   async notifyAIAnalysisStarted(reconciliationId: string, recordCount: number, userId: string): Promise<void> {
-    await pubSubService.publish(RedisChannel.AI_ANALYSIS, {
+    await redisPubSubService.publish(RedisChannel.AI_ANALYSIS, {
       event: NotificationEvent.AI_ANALYSIS_STARTED,
       data: { reconciliationId, recordCount },
-      timestamp: Date.now(),
       userId,
     })
   }
@@ -259,10 +258,9 @@ class NotificationService {
     issueCount: number,
     userId: string,
   ): Promise<void> {
-    await pubSubService.publish(RedisChannel.AI_ANALYSIS, {
+    await redisPubSubService.publish(RedisChannel.AI_ANALYSIS, {
       event: NotificationEvent.AI_ANALYSIS_COMPLETED,
       data: { reconciliationId, analysisCount, issueCount },
-      timestamp: Date.now(),
       userId,
     })
   }
@@ -271,10 +269,9 @@ class NotificationService {
    * 发送 AI 分析失败通知
    */
   async notifyAIAnalysisFailed(reconciliationId: string, error: string, userId: string): Promise<void> {
-    await pubSubService.publish(RedisChannel.AI_ANALYSIS, {
+    await redisPubSubService.publish(RedisChannel.AI_ANALYSIS, {
       event: NotificationEvent.AI_ANALYSIS_FAILED,
       data: { reconciliationId, error },
-      timestamp: Date.now(),
       userId,
     })
   }
