@@ -418,7 +418,9 @@ yanyu-cloud3/
 │   ├── system-comprehensive-review-report.tsx
 │   ├── functional-assessment-report.tsx
 │   ├── MODULE_DEPENDENCIES.md
-│   └── DEPLOYMENT_TROUBLESHOOTING.md
+│   ├── DEPLOYMENT_TROUBLESHOOTING.md
+│   ├── VERCEL_DEPLOYMENT_GUIDE.md
+│   └── SECURITY_IMPLEMENTATION.md
 │
 ├── 📁 database/ # 数据库文件
 │   ├── 📁 migrations/ # 数据库迁移
@@ -1539,6 +1541,8 @@ pm2 startup
 
 ### Vercel 部署（前端）
 
+**快速部署：**
+
 ```bash
 
 ## 1. 安装 Vercel CLI
@@ -1553,6 +1557,16 @@ vercel login
 
 vercel --prod
 ```
+
+> 📘 **详细指南**: 查看完整的 [Vercel 部署指南](docs/VERCEL_DEPLOYMENT_GUIDE.md) 了解环境变量配置、域名设置、CORS 配置等详细信息。
+
+**重要提示**：
+- 本项目已配置支持 Vercel 域名（`*.vercel.app`）
+- CORS 和 CSP 策略已优化支持 Vercel 部署
+- 需要在 Vercel Dashboard 配置环境变量（见上方环境变量配置）
+- 后端需要配置 `ALLOWED_ORIGINS` 环境变量以允许 Vercel 域名
+
+
 
 ### 环境变量配置
 

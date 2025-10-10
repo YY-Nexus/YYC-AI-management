@@ -1,0 +1,69 @@
+# Dependencies
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Testing
+coverage
+.nyc_output
+*.log
+test-results
+test-report.*
+
+# Build outputs
+dist
+build
+.next
+out
+
+# Environment
+.env
+.env.local
+.env.*.local
+*.env
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backend
+backend/
+
+# Database
+database/
+*.sql
+
+# Scripts
+scripts/
+
+# Docker
+Dockerfile
+docker-compose*.yml
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Tests
+tests/
+__tests__/
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+
+# Other
+.git
+.github
+.storybook
+补充完善文件
